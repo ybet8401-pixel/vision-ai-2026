@@ -1,0 +1,25 @@
+{
+  "users": [
+    {
+      "id": "operator_default",
+      "email": "betaouafyassine7@gmail.com",
+      "name": "Operator Beta",
+      "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80",
+      "joinedDate": "2026-05-24",
+      "streakDays": 5,
+      "credits": 840
+    }
+  ],
+  "projects": [
+    {
+      "id": "p1",
+      "name": "Galaxy Canvas Game",
+      "description": "A responsive 2D HTML5 Canvas celestial starfield simulation and ship navigator",
+      "code": "/* Galaxy canvas */",
+      "type": "game",
+      "tech": "HTML/Canvas",
+      "userId": "operator_default",
+      "createdAt": "2026-05-25"
+    }
+  ]
+}

@@ -1,0 +1,83 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "User profile meta and statistics",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "tier": { "type": "string", "enum": ["Free Trial", "Quantum Pro", "Enterprise Cosmic"] },
+        "credits": { "type": "integer" },
+        "maxCredits": { "type": "integer" },
+        "avatar": { "type": "string" },
+        "joinedDate": { "type": "string" },
+        "streakDays": { "type": "integer" }
+      },
+      "required": ["name", "email", "tier", "credits", "maxCredits", "joinedDate", "streakDays"]
+    },
+    "Generation": {
+      "title": "AI Generation Asset",
+      "description": "A generated text, image, video, code or website asset",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["chat", "image", "video", "voice", "music", "code", "website"] },
+        "title": { "type": "string" },
+        "prompt": { "type": "string" },
+        "output": { "type": "string" },
+        "date": { "type": "string" },
+        "duration": { "type": "string" },
+        "resolution": { "type": "string" },
+        "aspectRatio": { "type": "string" },
+        "modelUsed": { "type": "string" }
+      },
+      "required": ["id", "type", "title", "prompt", "output", "date"]
+    },
+    "Notification": {
+      "title": "User System Notification",
+      "description": "Localized or system generated notifications",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "success", "warning", "quantum"] },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "time": { "type": "string" },
+        "read": { "type": "boolean" }
+      },
+      "required": ["id", "type", "title", "message", "time", "read"]
+    },
+    "Message": {
+      "title": "Chat Synapse Message",
+      "description": "Visual chat message in session logs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "assistant"] },
+        "content": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "model": { "type": "string" }
+      },
+      "required": ["id", "role", "content", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "The user's central profile and credits register"
+    },
+    "/users/{userId}/generations/{generationId}": {
+      "schema": { "$ref": "#/entities/Generation" },
+      "description": "The history of all visual and cognitive generations for the user"
+    },
+    "/users/{userId}/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "The custom status notifications of the user"
+    },
+    "/users/{userId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/Message" },
+      "description": "Stored chat session memories"
+    }
+  }
+}
