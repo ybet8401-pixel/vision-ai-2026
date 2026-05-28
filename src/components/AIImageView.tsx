@@ -39,6 +39,7 @@ export default function AIImageView({
   
   const [loading, setLoading] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [isImageLoaded, setIsImageLoaded] = useState(false);
   const [sourceUsed, setSourceUsed] = useState<string>('');
   const [copied, setCopied] = useState(false);
   const [generationStep, setGenerationStep] = useState(0);
@@ -113,6 +114,7 @@ export default function AIImageView({
     if (!prompt.trim() || loading) return;
     setLoading(true);
     setImageUrl(null);
+    setIsImageLoaded(false);
 
     try {
       const selected = ratios.find(r => r.value === aspectRatio) || ratios[0];
@@ -441,12 +443,19 @@ export default function AIImageView({
           <div className="space-y-4 flex-1 flex flex-col justify-between">
             
             {/* Display screen wrapper with neat responsive scaling & frame bounds */}
-            <div className="bg-neutral-950/80 p-3 rounded-2xl border border-neutral-900 shadow-2xl overflow-hidden flex items-center justify-center flex-1 max-h-[500px]">
+            <div className="bg-neutral-950/80 p-3 rounded-2xl border border-neutral-900 shadow-2xl overflow-hidden flex items-center justify-center flex-1 max-h-[500px] relative">
+              {!isImageLoaded && (
+                <div className="absolute inset-x-3 inset-y-3 rounded-xl bg-neutral-900/50 animate-pulse backdrop-blur-xl flex items-center justify-center">
+                  <ImageIcon className="w-8 h-8 text-neutral-700" />
+                </div>
+              )}
               <img 
                 src={imageUrl} 
                 alt="Vision AI Smart Frame Output" 
-                className="rounded-xl max-h-[440px] max-w-full object-contain shadow-md hover:scale-[1.01] transition-transform duration-300 border border-neutral-900"
+                className={`rounded-xl max-h-[440px] max-w-full object-contain shadow-md hover:scale-[1.01] transition-all duration-700 border border-neutral-900 ${isImageLoaded ? 'opacity-100 blur-0' : 'opacity-0 blur-md'}`}
                 referrerPolicy="no-referrer"
+                loading="lazy"
+                onLoad={() => setIsImageLoaded(true)}
               />
             </div>
 

@@ -990,6 +990,10 @@ export default function AIWebsiteView({
 
       const data = await res.json();
       
+      if (!res.ok || !data.logs) {
+        throw new Error(data.error || "Failed to compile project.");
+      }
+      
       // Dynamic staggered display of actual compilation events
       for (let i = 0; i < data.logs.length; i++) {
         await new Promise(r => setTimeout(r, 600));

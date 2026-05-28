@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs/promises";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
+import AdmZip from "adm-zip";
 
 // Load environment variables from .env
 dotenv.config();
@@ -25,7 +26,7 @@ async function writeDatabase(data: any) {
   await fs.writeFile(DB_PATH, JSON.stringify(data, null, 2), "utf-8");
 }
 
-type AgentMode = "reasoning" | "coding";
+type AgentMode = "reasoning" | "planning" | "coding" | "game" | "uiux" | "autofix" | "image";
 
 // INTERNAL RETRY SYSTEM
 async function fetchWithRetry(url: string, options: any, maxRetries = 2) {
@@ -65,14 +66,14 @@ async function generateTextResilient(
   ];
 
   // ==========================================
-  //  AGENT ROUTER: CODING & LOGIC EXECUTOR
+  //  AGENT ROUTER: CODING, GAME, UIUX, AUTOFIX
   // ==========================================
-  if (agentMode === "coding") {
-    // 1. OPENROUTER (Best Coding Models)
+  if (["coding", "game", "uiux", "autofix"].includes(agentMode)) {
+    // 1. OPENROUTER (Best Free Coding Models)
     const openrouterKey = process.env.OPENROUTER_API_KEY;
     if (openrouterKey) {
       try {
-        console.log("[AI ROUTER] Routing to Coding Agent: OpenRouter...");
+        console.log(`[AI ORCHESTRATOR] Routing to ${agentMode.toUpperCase()} Agent: OpenRouter...`);
         const codingModels = [
           "qwen/qwen-2.5-coder-32b-instruct:free",
           "deepseek/deepseek-chat:free",
@@ -81,7 +82,7 @@ async function generateTextResilient(
         // Try the models in order until one succeeds
         for (const model of codingModels) {
           try {
-            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            const response = await fetchWithRetry("https://openrouter.ai/api/v1/chat/completions", {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -99,22 +100,22 @@ async function generateTextResilient(
             }
           } catch(e) {}
         }
-      } catch (err) { console.warn("OpenRouter Coding Agent failed:", err); }
+      } catch (err) { console.warn("OpenRouter Agent failed:", err); }
     }
 
     // 2. TOGETHER AI (Fallback Coding)
     const togetherKey = process.env.TOGETHER_API_KEY;
     if (togetherKey) {
       try {
-        console.log("[AI ROUTER] Routing to Coding Agent: Together AI...");
-        const response = await fetch("https://api.together.xyz/v1/chat/completions", {
+        console.log(`[AI ORCHESTRATOR] Routing to ${agentMode.toUpperCase()} Agent: Together AI...`);
+        const response = await fetchWithRetry("https://api.together.xyz/v1/chat/completions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${togetherKey}`
           },
           body: JSON.stringify({
-            model: "meta-llama/Llama-3-70b-chat-hf", // good coding fallback
+            model: "Qwen/Qwen2.5-Coder-32B-Instruct", 
             messages: formattedMessages,
             temperature: 0.2
           })
@@ -122,21 +123,21 @@ async function generateTextResilient(
         if (response.ok) {
           const data = await response.json();
           const text = data.choices?.[0]?.message?.content;
-          if (text) return { response: text, provider: "Together AI (Llama-3-70B)" };
+          if (text) return { response: text, provider: "Together AI (Qwen-Coder)" };
         }
-      } catch (err) { console.warn("Together AI Coding Agent failed:", err); }
+      } catch (err) { console.warn("Together AI Agent failed:", err); }
     }
   }
 
   // ==========================================
-  //  AGENT ROUTER: REASONING & CHAT (or fallback)
+  //  AGENT ROUTER: REASONING & PLANNING
   // ==========================================
-  // 1. GROQ (Extremely fast reasoning)
+  // 1. GROQ (Extremely fast reasoning & planning)
   const groqKey = process.env.GROQ_API_KEY;
   if (groqKey && !webSearch) {
     try {
-      console.log("[AI ROUTER] Routing to Reasoning Agent: Groq...");
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      console.log("[AI ORCHESTRATOR] Routing to Reasoning Agent: Groq...");
+      const response = await fetchWithRetry("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -160,10 +161,10 @@ async function generateTextResilient(
   const openrouterKey = process.env.OPENROUTER_API_KEY;
   if (openrouterKey && !webSearch) {
     try {
-      console.log("[AI ROUTER] Routing to Reasoning Agent: OpenRouter...");
+      console.log("[AI ORCHESTRATOR] Routing to Reasoning Agent: OpenRouter...");
       const model = "deepseek/deepseek-chat:free";
       
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      const response = await fetchWithRetry("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -182,12 +183,37 @@ async function generateTextResilient(
     } catch (err) { console.warn("OpenRouter Reasoning Agent failed:", err); }
   }
 
-  // 3. DEEPINFRA
+  // 3. CLOUDFLARE AI (Fast performance Edge routing)
+  const cloudflareToken = process.env.CLOUDFLARE_API_TOKEN;
+  // Assume generic Account ID for demonstration or if it exists in env
+  const cloudflareAccount = process.env.CLOUDFLARE_ACCOUNT_ID;
+  if (cloudflareToken && cloudflareAccount && !webSearch) {
+    try {
+      console.log("[AI ORCHESTRATOR] Routing to Reasoning Agent: Cloudflare AI (Edge)...");
+      const response = await fetchWithRetry(`https://api.cloudflare.com/client/v4/accounts/${cloudflareAccount}/ai/run/@cf/meta/llama-3-8b-instruct`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${cloudflareToken}`
+        },
+        body: JSON.stringify({
+          messages: formattedMessages
+        })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const text = data.result?.response;
+        if (text) return { response: text, provider: "Cloudflare AI (Llama-3 Edge)" };
+      }
+    } catch (err) { console.warn("Cloudflare Reasoning Agent failed:", err); }
+  }
+
+  // 4. DEEPINFRA
   const deepinfraKey = process.env.DEEPINFRA_API_KEY;
   if (deepinfraKey && !webSearch) {
     try {
-      console.log("[AI ROUTER] Routing to Reasoning Agent: DeepInfra...");
-      const response = await fetch("https://api.deepinfra.com/v1/openai/chat/completions", {
+      console.log("[AI ORCHESTRATOR] Routing to Reasoning Agent: DeepInfra...");
+      const response = await fetchWithRetry("https://api.deepinfra.com/v1/openai/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -208,7 +234,7 @@ async function generateTextResilient(
 
   // 4. POLLINATIONS AI (Ultimate fallback & Search capability)
   try {
-    console.log("[AI ROUTER] Routing to Pollinations AI (Fallback / Web Search)...");
+    console.log("[AI ORCHESTRATOR] Routing to Pollinations AI (Fallback / Web Search)...");
     
     const polMessages = [
       { role: "system", content: systemInstruction },
@@ -218,7 +244,7 @@ async function generateTextResilient(
       }))
     ];
 
-    const response = await fetch("https://text.pollinations.ai/", {
+    const response = await fetchWithRetry("https://text.pollinations.ai/", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -269,7 +295,8 @@ async function generateTextResilient(
 
 async function startServer() {
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: '100mb' }));
+  app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
   // HEALTH MONITOR
   app.get("/api/health", (req, res) => {
@@ -420,6 +447,9 @@ async function startServer() {
     });
   });
 
+  // Global Context Memory System (Caches last 5 interactions)
+  const globalProjectMemory: { role: string; content: string }[] = [];
+
   // WEBPAGE AND GAMES COMPILER API
   app.post("/api/ai/website", async (req, res) => {
     const { prompt, tech = "HTML/Tailwind" } = req.body;
@@ -427,27 +457,66 @@ async function startServer() {
       return res.status(400).json({ error: "Concept instruction prompt is required." });
     }
 
-    const compilationSystemInstruction = `You are an elite, world-class HTML5 Game and Web Application compiler. 
-    You create actual, completely independent, highly operational, and gorgeous interactive programs, websites, and games from prompt specifications.
+    const isGame = tech.toLowerCase().includes("game") || prompt.toLowerCase().includes("game") || prompt.toLowerCase().includes("لعبة");
+    const targetAgentMode = isGame ? "game" : "coding";
+    
+    // STEP 1: SMART PLANNING & INTENT ANALYSIS
+    console.log(`[AI PLANNER] Analyzing prompt: ${prompt.slice(0, 30)}...`);
+    const planningPrompt = `You are a Principal Software Architect. Your job is to analyze the following user requirement and create a structured, step-by-step master plan to build it as a single-file highly interactive HTML/JS/CSS application.
+    Extract the true intent, target audience, core mechanics, required state variables, and visual design language.
+    Requirement: "${prompt}"
+    Technology: "${tech}"
+    Output a concise, numbered plan that a senior developer can follow directly. Do not output code, only the architectural plan.`;
+
+    let structuralPlan = "";
+    try {
+      const planResult = await generateTextResilient(
+        [...globalProjectMemory, { role: "user", content: planningPrompt }],
+        "Groq", // Using Reasoning Model for deeper analysis
+        false,
+        "You are an elite Software Planner and AI Architect. Focus on deep understanding, UI/UX structure, and exact logic steps.",
+        "planning"
+      );
+      structuralPlan = planResult.response;
+      console.log(`[AI PLANNER] Plan generated successfully by Groq Reasoning.`);
+    } catch (e) {
+      console.warn("Planning step skipped due to error.");
+    }
+
+    // STEP 2: EXECUTION & COMPILATION
+    const compilationSystemInstruction = `You are an elite, world-class Full Stack Software Engineer and Game Developer (AI Agent). 
+    You create actual, completely independent, highly operational, and gorgeous interactive programs, websites, and games from prompt specifications and architectural plans.
     
     CRITICAL IMPLEMENTATION RULES FOR GLOBAL COMPETITIVENESS:
-    1. EXQUISITE VISUAL POLISH: Always include a cohesive modern theme (default: sleek dark mode with vibrant neon overlays or golden hour colors). Use Tailwind CSS CDN. Incorporate premium glassmorphic cards, smooth interactive transition states, pulse effects, elegant icons, and gorgeous display typography.
-    2. INTERACTIVE & FULLY WORKING MECHANICS: Ensure every button, tab, input, and slider actively mutates the UI state. Include pre-seeded realistic mock databases or states so that dashboards, IDEs, or management platforms are immediately "actually working" with creation, deletion, and search actions.
-    3. IMMERSIVE GAME MECHANICS: For games, build high-performance HTML5 Canvas 2D render loops. Include:
-       - MOBILE & DESKTOP DUAL CONTROLS: Support both standard WASD/Arrow keys AND render floating on-screen buttons/joysticks for mobile screens.
-       - RICH SOUNDS SYNTHESIS: Generate authentic retro spatial sounds using the native Web Audio Context API (synthesize clean, non-blocking click, jump, shoot, hit, and game-over sounds dynamically).
-       - SURVIVAL HUD: Always display a high-fidelity HUD tracking player lives/health bar, score tally, level indicators, and killing feeds.
-    4. MULTILINGUAL & RTL COMPATIBILITY: If the user provides an Arabic prompt, compile the app using right-to-left layout directioning (dir="rtl") with elegant Google fonts (like 'Cairo' or 'Amiri' or 'Tajawal') and localized UI labels so it reads and acts perfectly in native Arabic.
+    1. EXQUISITE VISUAL POLISH: Always include a cohesive modern theme. Use Tailwind CSS CDN for apps. Incorporate premium glassmorphic cards, smooth interactive transition states, pulse effects, elegant icons, and gorgeous display typography.
+    2. INTERACTIVE & FULLY WORKING MECHANICS: Ensure every feature actively works. Build real logic. Build real state management. Do not just build UI. If a database is needed, use localStorage to simulate a database perfectly.
+    3. CHAIN OF THOUGHT: Use the provided architectural plan to guide your logic step-by-step. Implement everything requested.
+    4. IMMERSIVE GAME MECHANICS (When generating a game): 
+       - Build high-performance games using Phaser, Three.js, or raw Canvas API via CDN.
+       - Physics & Controls: Implement real gravity, collisions, and WASD/Arrow/Touch controls.
+       - Enemy AI & Levels: Add working enemies that chase/shoot, and logic for advancing levels or increasing difficulty.
+       - Audio & Visuals: Generate authentic retro spatial sounds using Web Audio API dynamically. Add particle effects and smooth animations.
+       - Game State: Always include Score System, Health/Lives, Game Over states, and a Restart button.
+    5. MULTILINGUAL & RTL COMPATIBILITY: If the user provides an Arabic prompt, compile the app using right-to-left layout directioning (dir="rtl") with elegant fonts.
     
-    IMPORTANT: Provide only the raw, complete, functional HTML code inside an HTML code block (or return raw text beginning with <!DOCTYPE html>). 
-    Do not add chat preamble, explanations, wrappers or markdown fences. The code must run seamlessly when placed inside an iframe. Raise the bar to compete with the top worldwide SaaS portals.`;
+    IMPORTANT: Provide only the raw, complete, functional HTML code (with embedded full JS/CSS) inside an HTML code block. The file MUST have all HTML, CSS, and JS integrated in one file. Do not add chat preamble, explanations, wrappers or markdown fences. Raise the bar to compete with the top worldwide SaaS portals.`;
+
+    const finalPrompt = `Build a highly interactive, complete and production-ready ${tech} application matching this user request:
+    USER REQUEST: "${prompt}"
+    
+    Use the following architectural Master Plan to guide your implementation:
+    === MASTER PLAN ===
+    ${structuralPlan}
+    ===================
+    
+    Remember: Return ONLY the raw HTML code inside an HTML code block, ready to run.`;
 
     const result = await generateTextResilient(
-      [{ role: "user", content: `Build a highly interactive ${tech} app based on: "${prompt}"` }],
+      [{ role: "user", content: finalPrompt }],
       "Auto",
       false,
       compilationSystemInstruction,
-      "coding"
+      targetAgentMode
     );
 
     let cleanCode = result.response.trim();
@@ -468,6 +537,15 @@ async function startServer() {
         cleanCode = cleanCode.split("---\n\n**Support Pollinations.AI")[0];
       }
       cleanCode = cleanCode.trim();
+    }
+    
+    // Save to Project Context Memory
+    globalProjectMemory.push({ role: "user", content: prompt });
+    globalProjectMemory.push({ role: "assistant", content: cleanCode.substring(0, 500) + "...[TRUNCATED_CODE]" });
+    
+    // Enforce 5 interaction limit (10 items: 5 users, 5 assistants)
+    if (globalProjectMemory.length > 10) {
+      globalProjectMemory.splice(0, globalProjectMemory.length - 10);
     }
 
     res.json({
@@ -497,23 +575,24 @@ async function startServer() {
     let finalPrompt = prompt;
     let refinedLog = "";
 
-    // 1. Core Prompt Enhancement Layer (Optional)
-    if (enhancePrompt) {
-      try {
-        console.log("Image Pipeline: Requesting visual enhancer...");
-        const enhancementResponse = await generateTextResilient(
-          [{ role: "user", content: prompt }], 
-          "Groq", 
-          false, 
-          "Create a highly descriptive, visually stunning English prompt designed for high-resolution image generators (like FLUX and Imagen) based on this concept description. Translate it to English if it is in Arabic. Add striking visual details, textures, volumetric atmospheres, color palettes, and realistic sensory touches. Keep it strictly focused on the subject. Do not include any conversational preamble or surrounding quotes. Only return the final, high-fidelity prompt."
-        );
-        if (enhancementResponse?.response) {
-          finalPrompt = enhancementResponse.response.trim();
-          refinedLog = ` [Prompt optimized dynamically by ${enhancementResponse.provider}]`;
-        }
-      } catch (err) {
-        console.warn("Prompt enhancement bypassed:", err);
+    // 1. ADVANCED IMAGE PROMPTING SYSTEM
+    try {
+      console.log(`[AI PLANNER] Engaging Advanced Image Prompting (Reasoning) for: "${prompt.slice(0, 30)}..."`);
+      // We explicitly override user description to automatically enhance it
+      const enhancementResponse = await generateTextResilient(
+        [{ role: "user", content: prompt }], 
+        "Groq", 
+        false, 
+        "You are an Elite Image Prompt Architect. Your job is to take the user's base concept and expand it into a MASTERPIECE Midjourney/FLUX prompt. Add specific artistic styles, cinematic lighting (e.g., 'volumetric lighting', 'golden hour'), dramatic camera angles (e.g., 'low angle wide shot', 'macro photography'), and rich texturing. Keep the response to just the prompt itself. Do not include conversational text or wrappers. Translate to English if needed.",
+        "reasoning"
+      );
+      if (enhancementResponse?.response) {
+        finalPrompt = enhancementResponse.response.trim();
+        refinedLog = ` [Advanced Prompt Architect: ${enhancementResponse.provider}]`;
+        console.log(`[AI PLANNER] Enhanced Prompt generated successfully.`);
       }
+    } catch (err) {
+      console.warn("Advanced Image Prompting bypassed, using original text:", err);
     }
 
     // 2. Synthesize Style tags to generate gorgeous structural details
@@ -579,11 +658,42 @@ async function startServer() {
     else if (aspectRatio === "21:9") { width = 1280; height = 544; }
 
     // Generate image using available AI models from .env
+    const hfToken = process.env.HF_TOKEN;
+    if (hfToken) {
+      try {
+        console.log("[AI ORCHESTRATOR] Routing to Image Agent: HuggingFace (FLUX/SDXL)...");
+        // Using SDXL or Flux from HF Inference API
+        const hfModel = engine === "sdxl" ? "stabilityai/stable-diffusion-xl-base-1.0" : "black-forest-labs/FLUX.1-schnell";
+        const resHf = await fetchWithRetry(`https://router.huggingface.co/hf-inference/models/${hfModel}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${hfToken}`
+          },
+          body: JSON.stringify({
+            inputs: finalPrompt,
+            parameters: { negative_prompt: negativePrompt || undefined }
+          })
+        });
+        if (resHf.ok) {
+          const buffer = await resHf.arrayBuffer();
+          const base64 = Buffer.from(buffer).toString('base64');
+          return res.json({
+            imageUrl: `data:image/jpeg;base64,${base64}`,
+            source: `HuggingFace (${hfModel})${refinedLog}`,
+            message: "Premium image generated successfully."
+          });
+        }
+      } catch (err) {
+        console.warn("HuggingFace Image Agent failed:", err);
+      }
+    }
+
     const togetherKey = process.env.TOGETHER_API_KEY;
     if (togetherKey) {
       try {
         console.log("Image Pipeline: Requesting Together AI Flux generator...");
-        const resTogether = await fetch("https://api.together.xyz/v1/images/generations", {
+        const resTogether = await fetchWithRetry("https://api.together.xyz/v1/images/generations", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -617,7 +727,7 @@ async function startServer() {
     if (deepInfraKey) {
       try {
         console.log("Image Pipeline: Requesting DeepInfra FLUX cluster...");
-        const resDeep = await fetch("https://api.deepinfra.com/v1/openai/images/generations", {
+        const resDeep = await fetchWithRetry("https://api.deepinfra.com/v1/openai/images/generations", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -670,142 +780,191 @@ async function startServer() {
     });
   });
 
-  // KINETIC MOTION VIDEO PIPELINE (INTELLIGENT DYNAMIC AI MATCHING & SYNTHESIS)
+  // KINETIC MOTION PIPELINE (INTELLIGENT DYNAMIC AI MATCHING & SYNTHESIS)
+  // Background Job Queue System for long-running video tasks
+  const videoJobs = new Map<string, { status: 'pending' | 'processing' | 'completed' | 'failed', videoUrl?: string, source?: string, error?: string, progress: number, logs: string[] }>();
+
+  app.get("/api/ai/video/status/:jobId", (req, res) => {
+    const job = videoJobs.get(req.params.jobId);
+    if (!job) {
+      return res.status(404).json({ error: "Job not found" });
+    }
+    res.json(job);
+  });
+
   app.post("/api/ai/video", async (req, res) => {
-    const { prompt, duration = "4s" } = req.body;
+    const { prompt, image, style } = req.body;
     if (!prompt) {
-      return res.status(400).json({ error: "Scenario description is required." });
+      return res.status(400).json({ error: "Motion prompt is required." });
     }
 
-    let keywords = prompt;
-    let expandedLog = "Acoustic AI Translation Matrix";
-
-    // 1. Leverage server-side Core to parse complex prompt constraints into search tags
-    try {
-      console.log(`Video Model: Expanding scene and optimizing keywords for: "${prompt.slice(0, 45)}..."`);
-      const resData = await generateTextResilient(
-        [{ role: "user", content: prompt }], 
-        "Pollinations", 
-        false, 
-        "You are an expert AI Stock Video Keyword Optimizer. Translate and extract exactly 2 to 3 precise, high-fidelity English search keywords representing the key visual subject of the following prompt. Keep it simple and direct. Only output the keywords separated by a comma (for example: \"desert landscape, sunset, sand dunes\"). Do not add any markdown, introduction, formatting, or explanation."
-      );
-      if (resData?.response) {
-        keywords = resData.response.replace(/["'`.()]/g, "").trim();
-        expandedLog = `${resData.provider} parsed: [${keywords}]`;
-        console.log(`Video Model: Synced search keys: "${keywords}"`);
-      }
-    } catch (err: any) {
-      console.warn("Video Model: metadata synthesis bypassed:", err.message);
-    }
-
-    let selectedVideo = "";
-    let videoSource = "Vision AI Video Generator v4";
-
+    const falKey = process.env.FAL_KEY;
+    const replicateToken = process.env.REPLICATE_API_TOKEN;
     const hfToken = process.env.HF_TOKEN;
-    if (hfToken) {
-      try {
-        console.log(`Video Model: Calling Hugging Face Video Generator for: "${keywords}"`);
-        // we use a lightweight image-to-video or text-to-video that yields fast responses.
-        const hfRes = await fetch("https://api-inference.huggingface.co/models/ali-vilab/text-to-video-ms-1.7b", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${hfToken}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ inputs: keywords })
-        });
-        
-        if (hfRes.ok) {
-          const buffer = Buffer.from(await hfRes.arrayBuffer());
-          const base64Video = buffer.toString("base64");
-          selectedVideo = `data:video/mp4;base64,${base64Video}`;
-          videoSource = `Hugging Face (ali-vilab/text-to-video-ms-1.7b)`;
-          console.log("Video Model: Successfully generated and buffered raw video from Hugging Face.");
-        } else {
-          console.warn("Video Model: HF Video generation returned status:", hfRes.status);
-        }
-      } catch (err: any) {
-        console.warn(`[Fallback Triggered] HF Video Model timed out or unavailable. Rotating to secondary Real-Time Synthesis Core...`);
-      }
+
+    if (!falKey && !replicateToken && !hfToken) {
+      return res.status(503).json({ error: "Motion AI pipeline could not render the video. No premium API keys (FAL_KEY, REPLICATE_API_TOKEN, HF_TOKEN) are available. Please configure keys to use the real engine." });
     }
 
-    // 2. Query robust Pixabay index rotating through active premium free keys for cinematic MP4 streams
-    const PIXABAY_KEYS = [
-      "14212953-f7ceb2fd1ec2ec24fa603cf3f",
-      "23769153-6ce0d9ec2a8fc2f2ec409fbe7",
-      "18131343-ae5263a23a8e99fd0e28f3e30"
-    ];
+    const jobId = Math.random().toString(36).substring(7) + Date.now().toString();
+    videoJobs.set(jobId, { status: 'pending', progress: 0, logs: ["Job accepted and queued."] });
 
-    const queryTerms = keywords.replace(/,/g, " ").replace(/\s+/g, " ").trim();
+    // Send jobId immediately to the client so they can start polling
+    res.json({ jobId });
 
-    if (!selectedVideo) {
-      for (const key of PIXABAY_KEYS) {
-        try {
-          const pUrl = `https://pixabay.com/api/videos/?key=${key}&q=${encodeURIComponent(queryTerms)}&per_page=10&safesearch=true`;
-          console.log(`Video Model: Fetching real Pixabay video resource: q="${queryTerms}"`);
-          
-          const pResponse = await fetch(pUrl, {
-            headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            }
-          });
-
-          if (pResponse.ok) {
-            const pData = await pResponse.json();
-            if (pData.hits && pData.hits.length > 0) {
-              const limit = Math.min(pData.hits.length, 5);
-              const chosenHit = pData.hits[Math.floor(Math.random() * limit)];
-              const videoQualities = chosenHit.videos;
-              
-              selectedVideo = videoQualities.medium?.url || videoQualities.large?.url || videoQualities.small?.url;
-              if (selectedVideo) {
-                const tagsList = chosenHit.tags.split(',').slice(0, 3).map((t: string) => t.trim()).join(', ');
-                videoSource = `Pollinations & Pixabay Real-Time Cinematic Fusion (${tagsList})`;
-                console.log(`Video Model: Selected premium live feed URL: ${selectedVideo}`);
-                break;
-              }
-            }
-          }
-        } catch (err: any) {
-          console.warn(`Video Model: Key lookup failed: ${err.message}, attempting rotation fallback...`);
-        }
-      }
-    }
-
-    // 3. Resilient semantic fallback in case query returns zero hits (completely bulletproof)
-    if (!selectedVideo) {
-      console.log("Video Model: Search returned zero results. Commencing semantic fallback matches...");
-      const textLower = prompt.toLowerCase();
+    // Run processing asynchronously in the background
+    (async () => {
+      const job = videoJobs.get(jobId)!;
+      job.status = 'processing';
+      job.progress = 10;
+      job.logs.push(`[AI ORCHESTRATOR] Routing to Motion Agent for prompt: "${prompt.substring(0, 30)}..."`);
       
-      if (textLower.includes("cyber") || textLower.includes("city") || textLower.includes("glow") || textLower.includes("neon")) {
-        selectedVideo = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4";
-        videoSource = "Vision AI Native Cinematic Codec (Tears of Steel)";
-      } else if (textLower.includes("space") || textLower.includes("astronaut") || textLower.includes("cosmic") || textLower.includes("galaxy") || textLower.includes("star")) {
-        selectedVideo = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4";
-        videoSource = "Vision AI Native Sky Dome Model (Sintel Space Matrix)";
-      } else if (textLower.includes("game") || textLower.includes("console") || textLower.includes("play")) {
-        selectedVideo = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4";
-        videoSource = "Vision AI Quantum Play Engine (Joyrides)";
-      } else if (textLower.includes("abstract") || textLower.includes("art") || textLower.includes("particle") || textLower.includes("render")) {
-        selectedVideo = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4";
-        videoSource = "Vision AI Vector Wave Generator (Escapes)";
-      } else {
-        const defaultPool = [
-          "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-          "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-          "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-        ];
-        selectedVideo = defaultPool[Math.floor(Math.random() * defaultPool.length)];
-        videoSource = "Vision AI Resilient Core Renderer";
-      }
-    }
+      let selectedVideo = "";
+      let videoSource = "";
 
-    res.json({
-      videoUrl: selectedVideo,
-      source: videoSource,
-      promptUsed: prompt,
-      duration: duration
-    });
+      try {
+        // 1. FAL AI - Kling or Luma (Premium Frame-to-Video)
+        if (falKey && !selectedVideo) {
+          try {
+            job.logs.push(`[MOTION AI] Calling FAL API (Kling Image-to-Video)...`);
+            job.progress = 30;
+            const falRes = await fetchWithRetry("https://api.fal.ai/v1/kling/image-to-video", {
+              method: "POST",
+              headers: {
+                "Authorization": `Key ${falKey}`,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                prompt: prompt,
+                image_url: image || undefined,
+                duration: "5",
+                aspect_ratio: "16:9"
+              })
+            });
+            
+            if (falRes.ok) {
+              const data = await falRes.json();
+              if (data.video && data.video.url) {
+                selectedVideo = data.video.url;
+                videoSource = "FAL (Kling Motion AI)";
+                job.logs.push(`[SUCCESS] FAL API returned video.`);
+              } else {
+                 job.logs.push(`[WARN] FAL returned unexpected data structure.`);
+              }
+            } else {
+              const err = await falRes.text();
+              job.logs.push(`[ERROR] FAL failed with status ${falRes.status}: ${err}`);
+            }
+          } catch (e: any) {
+            job.logs.push(`[WARN] FAL Video request failed: ${e.message}`);
+          }
+        }
+
+        // 2. REPLICATE - Stable Video Diffusion
+        if (replicateToken && !selectedVideo) {
+          try {
+            job.logs.push(`[MOTION AI] Calling Replicate (SVD Image-to-Video)...`);
+            job.progress = 50;
+            const repRes = await fetchWithRetry("https://api.replicate.com/v1/predictions", {
+              method: "POST",
+              headers: {
+                "Authorization": `Token ${replicateToken}`,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                version: "3f0457e4619daac51203dedb472816fd4af51f3149fa7a9e0b5ffcf1b8172438", // stable-video-diffusion
+                input: {
+                  cond_aug: 0.02,
+                  decoding_t: 14,
+                  image: image || undefined,
+                  video_length: "14_frames_with_svd",
+                  frames_per_second: 6,
+                  motion_bucket_id: 127
+                }
+              })
+            });
+            
+            if (repRes.ok) {
+              const data = await repRes.json();
+              job.logs.push(`[INFO] Replicate Prediction Started. ID: ${data.id}`);
+              
+              // Polling loop for Replicate
+              for (let i = 0; i < 15; i++) {
+                await new Promise(resolve => setTimeout(resolve, 4000));
+                
+                const pollRes = await fetch(`https://api.replicate.com/v1/predictions/${data.id}`, {
+                  headers: { "Authorization": `Token ${replicateToken}` }
+                });
+                
+                if (pollRes.ok) {
+                  const pollData = await pollRes.json();
+                  job.logs.push(`[POLL] Replicate Status: ${pollData.status}`);
+                  if (pollData.status === 'succeeded' && pollData.output) {
+                    selectedVideo = pollData.output;
+                    videoSource = "Replicate (SVD)";
+                    break;
+                  } else if (pollData.status === 'failed') {
+                    job.logs.push(`[ERROR] Replicate failed.`);
+                    break;
+                  }
+                }
+              }
+            } else {
+               const err = await repRes.text();
+               job.logs.push(`[ERROR] Replicate failed with status ${repRes.status}: ${err}`);
+            }
+          } catch (e: any) {
+            job.logs.push(`[WARN] Replicate Video request failed: ${e.message}`);
+          }
+        }
+
+        // 3. Hugging Face Inference API
+        if (hfToken && !selectedVideo) {
+          try {
+            job.logs.push(`[MOTION AI] Calling Hugging Face Video Generator...`);
+            job.progress = 80;
+            const keywords = prompt.substring(0, 100);
+            
+            const hfRes = await fetchWithRetry("https://router.huggingface.co/hf-inference/models/ali-vilab/text-to-video-ms-1.7b", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${hfToken}`,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({ inputs: keywords })
+            });
+            
+            if (hfRes.ok) {
+              const buffer = Buffer.from(await hfRes.arrayBuffer());
+              const base64 = buffer.toString('base64');
+              selectedVideo = `data:video/mp4;base64,${base64}`;
+              videoSource = `Hugging Face (ali-vilab/text-to-video-ms-1.7b) + ${style || 'Custom Style'}`;
+              job.logs.push(`[SUCCESS] HF API returned video.`);
+            } else {
+              const err = await hfRes.text();
+              job.logs.push(`[WARN] HF returned status ${hfRes.status}: ${err}`);
+            }
+          } catch(e: any) {
+            job.logs.push(`[WARN] HF Video request failed: ${e.message}`);
+          }
+        }
+
+        job.progress = 100;
+        if (!selectedVideo) {
+           job.status = 'failed';
+           job.error = "All configured providers failed to generate the video. Please check API quotas or logs.";
+        } else {
+           job.status = 'completed';
+           job.videoUrl = selectedVideo;
+           job.source = videoSource;
+        }
+
+      } catch (err: any) {
+        job.status = 'failed';
+        job.error = err.message || "Unknown fatal error in pipeline.";
+        job.logs.push(`[FATAL] ${job.error}`);
+      }
+    })();
   });
 
   // REAL TEXT TO SPEECH (TTS) PROXY & COMPILATION STREAM (FREE EDITION)
@@ -861,7 +1020,6 @@ async function startServer() {
     }
 
     try {
-      const AdmZip = require("adm-zip");
       const zip = new AdmZip();
 
       // Add actual working code file
@@ -921,6 +1079,15 @@ async function startServer() {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
+
+  // Centralized Error Handling Middleware
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error('[EXPRESS ERROR]:', err);
+    if (err.type === 'entity.too.large') {
+      return res.status(413).json({ error: 'Payload size too large. Please reduce image/video size.' });
+    }
+    return res.status(err.status || 500).json({ error: err.message || 'Internal Server Error' });
+  });
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Vision Quantum AI Server executing locally on port ${PORT}`);

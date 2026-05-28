@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { 
   Sparkles, 
   Video, 
@@ -8,10 +8,10 @@ import {
   Download, 
   Cpu, 
   RefreshCw,
-  Gauge,
-  Sliders,
-  CheckCircle2,
-  AlertCircle
+  Upload,
+  Image as ImageIcon,
+  Activity,
+  CheckCircle2
 } from 'lucide-react';
 import { Generation } from '../types';
 import AIVideoPlayer from './AIVideoPlayer';
@@ -27,97 +27,141 @@ export default function AIVideoView({
 }: AIVideoViewProps) {
   const isRtl = language === 'ar';
   const [prompt, setPrompt] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [duration, setDuration] = useState('4s');
-  const [motionRate, setMotionRate] = useState(60);
-
-  // Dynamic status milestones matching standard premium startup requirements
+  const [styleDesc, setStyleDesc] = useState('Realistic Animation');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [logs, setLogs] = useState<string[]>([]);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  
   const steps = isRtl 
     ? [
-        { label: 'الاتصال بمستودع المعالجة الكمي', desc: 'يربط العنقود الأساسي بنموذج Veo Lite v3.1...' },
-        { label: 'تفكيك الكلمات لنقاط الحركة', desc: 'يقسم المعلم موجه النص لحساب إطارات المتجهات الفراغية...' },
-        { label: 'رسم الإطارات الأساسية (1 إلى %d)', desc: 'يقوم المعالج المركزي برسم الألوان وحساب العمق البصري...' },
-        { label: 'تجميع دفق الفيديو وحساب الـ Chroma', desc: 'يدمج حركة ذرات النور بمعدل 60 إطاراً في الثانية...' },
-        { label: 'تشفير ورندرة الملف النهائي', desc: 'توليد ملف فيديو MP4 فائق الثبات ومتصل كلياً...' }
+        { label: 'تحليل الصورة وبناء المجسم', desc: 'استخراج الملامح والأبعاد...' },
+        { label: 'فهم الحركة المطلوبة', desc: 'تطبيق موجه النص على المجسم...' },
+        { label: 'رندرة الإطارات', desc: 'إنشاء الحركة بسلاسة...' },
+        { label: 'تجميع الإطارات النهائية', desc: 'توليد فيديو الانيميشن...' }
       ]
     : [
-        { label: 'Initiating Quantum Frame Connection', desc: 'Establishing tunnel with Veo-3.1-lite central nodes...' },
-        { label: 'Parsing Concept Frame Coordinates', desc: 'Translating text instructions into spatial multidimensional vectors...' },
-        { label: 'Synthesizing Dynamic Frames (%d FPS)', desc: 'Rendering neural chromatic values and depth configurations...' },
-        { label: 'Splicing Vector Sequence Flow', desc: 'Stitching individual frame structures into continuous movements...' },
-        { label: 'Finalizing Cinematic Codec & Compilation', desc: 'Packaging file to standard H.264 MP4 format with audio sync...' }
+        { label: 'Analyzing Image & Modeling', desc: 'Extracting features and dimensions...' },
+        { label: 'Processing Motion Prompt', desc: 'Mapping text prompt to skeletal movement...' },
+        { label: 'Rendering Motion Frames', desc: 'Synthesizing smooth animation frames...' },
+        { label: 'Finalizing Video Assembly', desc: 'Stitching frames into complete MP4...' }
       ];
 
+  const handleImageFile = (file: File) => {
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      alert("Image size exceeds 10MB limit. Please provide a smaller image.");
+      return;
+    }
+    setImageFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setImagePreview(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleImageFile(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      handleImageFile(file);
+    }
+  };
+
+  // JOB POLLING EFFECT
   useEffect(() => {
-    if (!loading) return;
+    if (!jobId || !loading) return;
 
-    const timer = setTimeout(async () => {
-      if (activeStep < steps.length - 1) {
-        setActiveStep(activeStep + 1);
-      } else {
-        try {
-          // Request actual custom matching cinematic clip from full-stack backend
-          const response = await fetch('/api/ai/video', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/ai/video/status/${jobId}`);
+        if (!res.ok) throw new Error("Job tracking failed");
+        
+        const data = await res.json();
+        if (data.logs) setLogs(data.logs);
+        
+        // Update active step based on progress for visual feedback
+        if (data.progress > 0) setActiveStep(0);
+        if (data.progress > 25) setActiveStep(1);
+        if (data.progress > 50) setActiveStep(2);
+        if (data.progress > 75) setActiveStep(3);
+        
+        if (data.status === 'completed') {
+           clearInterval(pollInterval);
+           setVideoUrl(data.videoUrl);
+           setLoading(false);
+           setJobId(null);
+           addGeneration({
+              type: 'video',
+              title: prompt.slice(0, 35) + '...',
               prompt: prompt,
-              duration: duration
-            })
-          });
-
-          if (!response.ok) {
-            throw new Error("Local kinetic node error");
-          }
-
-          const data = await response.json();
-          setVideoUrl(data.videoUrl);
-          
-          addGeneration({
-            type: 'video',
-            title: prompt.slice(0, 35) + '...',
-            prompt: prompt,
-            output: data.videoUrl,
-            duration: duration,
-            modelUsed: data.source || 'Veo-3.1-Lite-Cinematic (Free)'
-          });
-
-        } catch (err) {
-          console.warn("Video backend error, using resilient stream:", err);
-          const resilientUrl = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
-          setVideoUrl(resilientUrl);
-          addGeneration({
-            type: 'video',
-            title: prompt.slice(0, 35) + '... (Resilient)',
-            prompt: prompt,
-            output: resilientUrl,
-            duration: duration,
-            modelUsed: 'Veo-3.1-Lite-Cinematic'
-          });
-        } finally {
-          setLoading(false);
+              output: data.videoUrl,
+              duration: '5s',
+              modelUsed: data.source || 'Motion-AI'
+           });
+        } else if (data.status === 'failed') {
+           clearInterval(pollInterval);
+           setErrorMsg(data.error || "Generation failed in processing pipeline.");
+           setLoading(false);
+           setJobId(null);
         }
+      } catch (err: any) {
+        console.warn("Polling error:", err);
       }
-    }, 1500); // Slightly faster milestones for dynamic performance feel
+    }, 2000);
 
-    return () => clearTimeout(timer);
-  }, [loading, activeStep, steps.length, prompt, duration, addGeneration]);
+    return () => clearInterval(pollInterval);
+  }, [jobId, loading, prompt, addGeneration]);
 
-  const handleStartGenerate = () => {
-    if (!prompt.trim() || loading) return;
+  const handleStartGenerate = async () => {
+    if (!prompt.trim() || !imagePreview || loading) return;
     setLoading(true);
     setActiveStep(0);
     setVideoUrl(null);
+    setErrorMsg(null);
+    setJobId(null);
+    setLogs(["Initializing upload..."]);
+
+    try {
+      const response = await fetch('/api/ai/video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: prompt,
+          image: imagePreview,
+          style: styleDesc
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Generation submission failed");
+      }
+      
+      setJobId(data.jobId);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message);
+      setLoading(false);
+    }
   };
 
   const handleDownload = () => {
     if (!videoUrl) return;
-    // Direct package download trigger
     const link = document.createElement('a');
     link.href = videoUrl;
-    link.download = `vision_ai_render_${Date.now()}.mp4`;
+    link.download = `motion_ai_${Date.now()}.mp4`;
     link.target = "_blank";
     link.click();
   };
@@ -128,91 +172,98 @@ export default function AIVideoView({
       {/* Parameters panel (2 cols) */}
       <div className="lg:col-span-2 p-6 rounded-2xl bg-neutral-900/20 border border-neutral-900 space-y-6">
         <div className="flex items-center gap-2.5">
-          <Film className="w-5 h-5 text-indigo-400 animate-pulse" />
+          <Activity className="w-5 h-5 text-indigo-400 animate-pulse" />
           <h3 className="font-bold text-white text-sm uppercase tracking-wider font-mono">
-            {isRtl ? 'محرك دمج وترتيب الفيديو الكوني' : 'Cinematic Forge Console'}
+            {isRtl ? 'محرك تحريك الصور الذكي' : 'AI Motion & Animation System'}
           </h3>
         </div>
 
-        {/* Video Prompt Area */}
+        {/* Image Upload Area */}
         <div className="space-y-2">
-          <label className="text-xs font-semibold text-neutral-400">{isRtl ? 'تفصيل المشهد وتحركاته:' : 'Cinematic Scene Description:'}</label>
+          <label className="text-xs font-semibold text-neutral-400">{isRtl ? 'صورة الشخصية / الوجه:' : 'Base Character / Face Image:'}</label>
+          <div 
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+            onDragLeave={() => setIsDragOver(false)}
+            onDrop={handleDrop}
+            className={`w-full relative h-[140px] flex flex-col items-center justify-center border-2 border-dashed ${isDragOver ? 'border-indigo-500 bg-indigo-500/10' : 'border-neutral-800 bg-neutral-950 hover:border-indigo-500'} rounded-xl transition cursor-pointer overflow-hidden group`}
+          >
+            {imagePreview ? (
+              <>
+                <img src={imagePreview} alt="Preview" className="w-full h-full object-cover opacity-60 group-hover:opacity-40 transition" />
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+                  <span className="bg-black/70 text-white px-3 py-1.5 rounded-lg text-xs font-bold">{isRtl ? 'تغيير الصورة' : 'Change Image'}</span>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-center text-neutral-500">
+                <Upload className="w-6 h-6 mb-2" />
+                <span className="text-xs font-bold">{isRtl ? 'اسحب الصورة أو اضغط هنا' : 'Drag & drop image or click'}</span>
+              </div>
+            )}
+          </div>
+          <input 
+            type="file" 
+            ref={fileInputRef}
+            onChange={handleImageUpload}
+            accept="image/*"
+            className="hidden"
+          />
+        </div>
+
+        {errorMsg && (
+          <div className="p-3 bg-red-900/20 border border-red-500/30 rounded-lg text-red-400 text-xs font-bold">
+            {errorMsg}
+          </div>
+        )}
+
+        {/* Motion Prompt Area */}
+        <div className="space-y-2">
+          <label className="text-xs font-semibold text-neutral-400">{isRtl ? 'أمر الحركة (ماذا يفعـل؟):' : 'Motion Command (Action):'}</label>
           <textarea 
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder={isRtl ? 'سفينة فضاء تندفع بسرعة فائقة عبر دوامة كونية بلون أزرق وبنفسجي متموج...' : 'A futuristic stealth ship hyper-jumping through a spinning dark void wormhole, leaving bright blue trails...'}
-            rows={4}
+            placeholder={isRtl ? 'اجعلني أركض بسرعة الكاميرا تتبعني...' : 'Make this character walk forward, waving their hands...'}
+            rows={3}
             className="w-full px-4 py-3 bg-neutral-950 text-xs sm:text-sm text-white placeholder-neutral-600 rounded-xl border border-neutral-850 outline-none focus:border-indigo-400 transition resize-none"
           />
         </div>
 
-        {/* Cinematic Duration Selector */}
+        {/* Animation Style Selector */}
         <div className="space-y-2">
-          <label className="text-xs font-semibold text-neutral-400">{isRtl ? 'مدة المقطع السينمائي:' : 'Target Duration:'}</label>
-          <div className="grid grid-cols-3 gap-2">
-            {['4s', '8s', '16s'].map((d) => (
+          <label className="text-xs font-semibold text-neutral-400">{isRtl ? 'نمط التحريك:' : 'Animation Style:'}</label>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            {['Realistic Animation', 'Anime Action', '3D Pixar Style', 'Smooth Lip Sync'].map((s) => (
               <button
-                key={d}
-                onClick={() => setDuration(d)}
+                key={s}
+                onClick={() => setStyleDesc(s)}
                 className={`
-                  p-2.5 rounded-xl border text-xs font-bold font-mono transition duration-200
-                  ${duration === d 
+                  p-2.5 rounded-xl border font-bold transition duration-200
+                  ${styleDesc === s 
                     ? 'bg-neutral-900 border-indigo-400 text-indigo-400' 
                     : 'bg-neutral-950 border-neutral-850 text-neutral-400 hover:text-white'}
                 `}
               >
-                {d}
+                {s}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Motion Rate / Density */}
-        <div className="space-y-3">
-          <div className="flex justify-between text-xs font-semibold">
-            <span className="text-neutral-400">{isRtl ? 'كثافة حركة الجزيئات:' : 'Fluid Motion Density:'}</span>
-            <span className="text-indigo-400 font-mono">{motionRate} FPS</span>
-          </div>
-          <input 
-            type="range" 
-            min="24" 
-            max="120" 
-            value={motionRate}
-            onChange={(e) => setMotionRate(Number(e.target.value))}
-            className="w-full accent-indigo-500 h-1.5 bg-neutral-950 rounded-lg cursor-pointer"
-          />
-        </div>
-
-        {/* Central specifications stats */}
-        <div className="p-4 rounded-xl bg-neutral-950 border border-neutral-900 font-mono text-[10px] sm:text-xs text-neutral-500 space-y-2">
-          <div className="flex justify-between">
-            <span>Synthesis Node:</span>
-            <span className="text-indigo-400 font-semibold">Veo-3.1-Lite (Free)</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Grid Resolution:</span>
-            <span className="text-neutral-400">1080p Full HD</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Frame Splice rate:</span>
-            <span className="text-neutral-400">{motionRate} frames/sec</span>
-          </div>
-        </div>
-
         <button 
           onClick={handleStartGenerate}
-          disabled={!prompt.trim() || loading}
+          disabled={!prompt.trim() || !imagePreview || loading}
           className="w-full py-4.5 rounded-xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-600 hover:opacity-95 disabled:from-neutral-900 disabled:to-neutral-950 disabled:text-neutral-600 transition font-bold text-sm tracking-wide flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/15 cursor-pointer"
         >
           {loading ? (
             <>
               <RefreshCw className="w-5 h-5 animate-spin" />
-              <span>{isRtl ? 'جاري نسج الإطارات...' : 'Synthesizing motion...'}</span>
+              <span>{isRtl ? 'جاري تحريك الصورة...' : 'Animating Image...'}</span>
             </>
           ) : (
             <>
               <Video className="w-5 h-5" />
-              <span>{isRtl ? 'توليد المقطع الكوني' : 'Engage Vid Synthesis'}</span>
+              <span>{isRtl ? 'إنشاء فيديو حركي' : 'Generate Motion Video'}</span>
             </>
           )}
         </button>
@@ -222,32 +273,40 @@ export default function AIVideoView({
       <div className="lg:col-span-3 min-h-[400px] flex flex-col justify-between p-6 rounded-2xl bg-neutral-900/15 border border-neutral-900 relative">
         <div className="absolute inset-0 bg-indigo-500/5 blur-3xl -z-10 rounded-full" />
 
-        {/* Placeholder Frame */}
         {!videoUrl && !loading && (
           <div className="flex flex-col items-center justify-center h-full text-center space-y-4 py-16">
             <div className="w-16 h-16 rounded-2xl bg-neutral-950 border border-neutral-850 flex items-center justify-center">
               <Film className="w-7 h-7 text-neutral-600 animate-pulse" />
             </div>
             <div>
-              <p className="text-white text-md font-bold">{isRtl ? 'شاشة الرندرة فارغة' : 'Simulation Screen Offline'}</p>
+              <p className="text-white text-md font-bold">{isRtl ? 'الاستوديو فارغ' : 'Motion Studio Standby'}</p>
               <p className="text-xs text-neutral-500 max-w-sm mt-1">
                 {isRtl 
-                  ? 'قم بإدخال تفاصيل حركة المشهد، حدد الإطارات والمخرجات، واطلب بناء الشريط الكوني.' 
-                  : 'Describe dynamic timeline motion on the console panel to begin compiling sci-fi cinematic clips.'}
+                  ? 'ارفع صورة واكتب وصف التحريك لبدء بناء الفيديو.' 
+                  : 'Upload an image and write a motion prompt to animate.'}
               </p>
             </div>
           </div>
         )}
 
-        {/* Dynamic Milestone step execution render */}
         {loading && (
-          <div className="flex flex-col justify-center h-full max-w-sm mx-auto space-y-5 py-6">
-            <div className="flex items-center gap-2.5 text-cyan-400 font-mono text-xs uppercase tracking-widest animate-pulse border-b border-neutral-900 pb-2">
-              <Cpu className="w-4 h-4 animate-spin-slow" />
-              <span>// PIPELINE PROCESSING MANIFEST</span>
+          <div className="flex flex-col justify-center h-full mx-auto space-y-8 w-full max-w-md py-6">
+            <div className="flex items-center justify-between text-cyan-400 font-mono text-xs uppercase tracking-widest border-b border-neutral-900 pb-2">
+              <div className="flex items-center gap-2.5 animate-pulse">
+                <Cpu className="w-4 h-4 animate-spin-slow" />
+                <span>Motion Engine Active</span>
+              </div>
+              <span>{Math.round((activeStep + 1) / steps.length * 100)}%</span>
+            </div>
+            
+            <div className="h-1.5 w-full bg-neutral-900 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-1000 ease-out"
+                  style={{ width: `${((activeStep + 1) / steps.length) * 100}%` }}
+                />
             </div>
 
-            <div className="space-y-4 flex-1">
+            <div className="space-y-4">
               {steps.map((st, idx) => {
                 const stepActive = activeStep === idx;
                 const stepPassed = idx < activeStep;
@@ -263,7 +322,7 @@ export default function AIVideoView({
 
                     <div className="min-w-0">
                       <p className={`font-semibold ${stepActive ? 'text-white' : 'text-neutral-400'}`}>
-                        {st.label.replace('%d', motionRate.toString())}
+                        {st.label}
                       </p>
                       <p className="text-[10px] text-neutral-500 mt-0.5">{st.desc}</p>
                     </div>
@@ -271,38 +330,48 @@ export default function AIVideoView({
                 );
               })}
             </div>
+
+            {logs.length > 0 && (
+              <div className="mt-4 p-3 bg-neutral-950 border border-neutral-900 rounded-xl h-24 overflow-y-auto text-[10px] font-mono text-neutral-500 space-y-1">
+                {logs.map((log, i) => (
+                  <div key={i} className="flex gap-2">
+                    <span className="text-neutral-700">[{new Date().toLocaleTimeString()}]</span>
+                    <span>{log}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
         {/* Real output display frame */}
         {videoUrl && !loading && (
-          <div className="space-y-6 flex-1 flex flex-col justify-between">
-            <div className="bg-neutral-950/40 p-2.5 rounded-2xl border border-neutral-900 shadow-xl overflow-hidden flex items-center justify-center max-h-[460px] w-full">
+          <div className="space-y-6 flex-1 flex flex-col justify-between items-center w-full max-w-2xl mx-auto">
+            <div className="bg-neutral-950/40 p-2.5 rounded-2xl border border-neutral-900 shadow-xl overflow-hidden flex items-center justify-center w-full">
               <AIVideoPlayer 
                 src={videoUrl}
                 language={language}
-                aspectRatioLabel={duration === '4s' ? '16:9' : duration === '8s' ? '9:16' : '1:1'}
-                fpsLabel={motionRate}
+                aspectRatioLabel="16:9"
+                fpsLabel={60}
               />
             </div>
 
-            {/* Actions details footer */}
-            <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-xl bg-neutral-950/50 border border-neutral-900 font-mono text-xs">
-              <span className="text-neutral-500 uppercase">{duration} Stream Completed @ {motionRate}FPS</span>
+            <div className="flex w-full flex-wrap items-center justify-between gap-4 p-4 rounded-xl bg-neutral-950/50 border border-neutral-900 font-mono text-xs">
+              <span className="text-neutral-500 uppercase">HD Motion Stream Completed</span>
               
               <button 
                 onClick={handleDownload}
                 className="px-4 py-2 text-xs font-bold bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white rounded-xl transition flex items-center gap-1.5 shadow-md shadow-indigo-500/15 cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>{isRtl ? 'تحميل MP4' : 'Download Complete Video'}</span>
+                <span>{isRtl ? 'تحميل MP4' : 'Download Video'}</span>
               </button>
             </div>
           </div>
         )}
 
       </div>
-
     </div>
   );
 }
+
