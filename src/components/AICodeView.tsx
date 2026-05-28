@@ -9,9 +9,11 @@ import {
   BookOpen,
   RefreshCw,
   Terminal,
-  FileCode
+  FileCode,
+  FileText
 } from 'lucide-react';
 import { Generation } from '../types';
+import jsPDF from 'jspdf';
 
 interface AICodeViewProps {
   addGeneration: (gen: Omit<Generation, 'id' | 'date'>) => void;
@@ -62,7 +64,9 @@ export default function AICodeView({
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          message: compiledPrompt
+          message: compiledPrompt,
+          systemInstruction: `You are an elite expert software engineer. Output valid raw ${codeType} code based on the prompt. Do not explain. Guarantee full program logic including state, logic, error handling.`,
+          agentMode: "coding"
         })
       });
 
@@ -91,6 +95,42 @@ export default function AICodeView({
     navigator.clipboard.writeText(resultCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const downloadPDF = () => {
+    if (!resultCode) return;
+    const doc = new jsPDF();
+    
+    // Set up fonts and text colors
+    doc.setFontSize(14);
+    doc.setTextColor(40, 40, 40);
+    const title = `${codeType} Synthesis Output`;
+    doc.text(title, 14, 20);
+    
+    // Meta information
+    doc.setFontSize(10);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Generated exactly matched prompt:`, 14, 28);
+    doc.text(`"${prompt}"`, 14, 34, { maxWidth: 180 });
+    
+    // Add code content
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(10, 10, 10);
+    
+    const splitCode = doc.splitTextToSize(resultCode, 180);
+    let yPosition = 45;
+    
+    for (let i = 0; i < splitCode.length; i++) {
+        if (yPosition > 280) {
+            doc.addPage();
+            yPosition = 20;
+        }
+        doc.text(splitCode[i], 14, yPosition);
+        yPosition += 4;
+    }
+    
+    doc.save(`synthesis_${codeType.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now()}.pdf`);
   };
 
   return (
@@ -207,13 +247,24 @@ export default function AICodeView({
             <div className="flex items-center justify-between text-xs font-mono border-b border-neutral-900 pb-3">
               <span className="text-amber-500 uppercase flex items-center gap-1.5"><Terminal className="w-4 h-4" /> {codeType} Sandbox Out</span>
               
-              <button 
-                onClick={copyCode}
-                className="px-3 py-1.5 bg-neutral-900 border border-neutral-850 hover:border-neutral-700 text-neutral-300 hover:text-white rounded-xl transition duration-150 flex items-center gap-1.5 cursor-pointer"
-              >
-                {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-amber-500" />}
-                <span>{copied ? (isRtl ? 'تم النسخ!' : 'Copied!') : (isRtl ? 'نسخ الجيل كامل' : 'Copy Code')}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={downloadPDF}
+                  className="px-3 py-1.5 bg-neutral-900 border border-neutral-850 hover:border-neutral-700 text-neutral-300 hover:text-white rounded-xl transition duration-150 flex items-center gap-1.5 cursor-pointer"
+                  title="Export as PDF Document"
+                >
+                  <FileText className="w-3.5 h-3.5 text-blue-400" />
+                  <span>{isRtl ? 'تحميل PDF' : 'Export PDF'}</span>
+                </button>
+
+                <button 
+                  onClick={copyCode}
+                  className="px-3 py-1.5 bg-neutral-900 border border-neutral-850 hover:border-neutral-700 text-neutral-300 hover:text-white rounded-xl transition duration-150 flex items-center gap-1.5 cursor-pointer"
+                >
+                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-amber-500" />}
+                  <span>{copied ? (isRtl ? 'تم النسخ!' : 'Copied!') : (isRtl ? 'نسخ الجيل كامل' : 'Copy Code')}</span>
+                </button>
+              </div>
             </div>
 
             {/* Structured Text Code Container */}

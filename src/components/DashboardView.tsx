@@ -12,6 +12,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { UserProfile, Generation } from '../types';
+import AdBanner from './AdBanner';
 
 interface DashboardViewProps {
   profile: UserProfile;
@@ -93,6 +94,13 @@ export default function DashboardView({
           </div>
         </div>
       </div>
+
+      {/* AdSense Display Zone */}
+      <AdBanner 
+        adSlot="dashboard_top"
+        isPremium={profile.tier === 'Quantum Pro' || profile.tier === 'Enterprise Cosmic'}
+        className="my-6 shadow-sm shadow-indigo-900/10"
+      />
 
       {/* Metrics Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">

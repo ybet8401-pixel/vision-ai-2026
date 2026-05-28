@@ -25,12 +25,34 @@ async function writeDatabase(data: any) {
   await fs.writeFile(DB_PATH, JSON.stringify(data, null, 2), "utf-8");
 }
 
-// RESILIENT MULTI-PROVIDER CHAT COMPLETIONS (rotates automatically)
+type AgentMode = "reasoning" | "coding";
+
+// INTERNAL RETRY SYSTEM
+async function fetchWithRetry(url: string, options: any, maxRetries = 2) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const res = await fetch(url, options);
+      if (res.ok) return res;
+      if (res.status === 429) {
+        console.warn(`[AI Orchestrator] Rate limit hit. Retrying (${i + 1}/${maxRetries})...`);
+        await new Promise(resolve => setTimeout(resolve, 1500 * (i + 1))); // Backoff
+        continue;
+      }
+      return res; // let the caller handle other failures
+    } catch (err) {
+      if (i === maxRetries - 1) throw err;
+    }
+  }
+  throw new Error("Max retries reached");
+}
+
+// RESILIENT MULTI-PROVIDER AI ROUTER (Orchestrator)
 async function generateTextResilient(
   messages: { role: string; content: string }[], 
   modelName: string = "Auto", 
   webSearch: boolean = false, 
-  systemInstruction: string = "You are Vision AI v4.0, an ultra-advanced cognitive core designed to analyze prompts with deep research capabilities and maximum precision."
+  systemInstruction: string = "You are Vision AI v4.0, an ultra-advanced cognitive core designed to analyze prompts with deep research capabilities and maximum precision.",
+  agentMode: AgentMode = "reasoning"
 ) {
   const prompt = messages[messages.length - 1]?.content || "";
   
@@ -42,11 +64,78 @@ async function generateTextResilient(
     }))
   ];
 
-  // 1. GROQ
+  // ==========================================
+  //  AGENT ROUTER: CODING & LOGIC EXECUTOR
+  // ==========================================
+  if (agentMode === "coding") {
+    // 1. OPENROUTER (Best Coding Models)
+    const openrouterKey = process.env.OPENROUTER_API_KEY;
+    if (openrouterKey) {
+      try {
+        console.log("[AI ROUTER] Routing to Coding Agent: OpenRouter...");
+        const codingModels = [
+          "qwen/qwen-2.5-coder-32b-instruct:free",
+          "deepseek/deepseek-chat:free",
+          "meta-llama/llama-3.1-8b-instruct:free"
+        ];
+        // Try the models in order until one succeeds
+        for (const model of codingModels) {
+          try {
+            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${openrouterKey}`
+              },
+              body: JSON.stringify({
+                model: model,
+                messages: formattedMessages
+              })
+            });
+            if (response.ok) {
+              const data = await response.json();
+              const text = data.choices?.[0]?.message?.content;
+              if (text) return { response: text, provider: `OpenRouter (${model})` };
+            }
+          } catch(e) {}
+        }
+      } catch (err) { console.warn("OpenRouter Coding Agent failed:", err); }
+    }
+
+    // 2. TOGETHER AI (Fallback Coding)
+    const togetherKey = process.env.TOGETHER_API_KEY;
+    if (togetherKey) {
+      try {
+        console.log("[AI ROUTER] Routing to Coding Agent: Together AI...");
+        const response = await fetch("https://api.together.xyz/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${togetherKey}`
+          },
+          body: JSON.stringify({
+            model: "meta-llama/Llama-3-70b-chat-hf", // good coding fallback
+            messages: formattedMessages,
+            temperature: 0.2
+          })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          const text = data.choices?.[0]?.message?.content;
+          if (text) return { response: text, provider: "Together AI (Llama-3-70B)" };
+        }
+      } catch (err) { console.warn("Together AI Coding Agent failed:", err); }
+    }
+  }
+
+  // ==========================================
+  //  AGENT ROUTER: REASONING & CHAT (or fallback)
+  // ==========================================
+  // 1. GROQ (Extremely fast reasoning)
   const groqKey = process.env.GROQ_API_KEY;
   if (groqKey && !webSearch) {
     try {
-      console.log("Attempting Groq completion...");
+      console.log("[AI ROUTER] Routing to Reasoning Agent: Groq...");
       const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -56,7 +145,7 @@ async function generateTextResilient(
         body: JSON.stringify({
           model: "llama-3.3-70b-versatile",
           messages: formattedMessages,
-          temperature: 0.7
+          temperature: 0.6
         })
       });
       if (response.ok) {
@@ -64,47 +153,15 @@ async function generateTextResilient(
         const text = data.choices?.[0]?.message?.content;
         if (text) return { response: text, provider: "Groq (Llama-3.3-70B)" };
       }
-    } catch (err) { console.warn("Groq failed:", err); }
+    } catch (err) { console.warn("Groq Reasoning Agent failed:", err); }
   }
 
-  // 2. TOGETHER AI
-  const togetherKey = process.env.TOGETHER_API_KEY;
-  if (togetherKey && !webSearch) {
-    try {
-      console.log("Attempting Together AI completion...");
-      const response = await fetch("https://api.together.xyz/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${togetherKey}`
-        },
-        body: JSON.stringify({
-          model: "meta-llama/Llama-3-8b-chat-hf",
-          messages: formattedMessages,
-          temperature: 0.7
-        })
-      });
-      if (response.ok) {
-        const data = await response.json();
-        const text = data.choices?.[0]?.message?.content;
-        if (text) return { response: text, provider: "Together AI (Llama-3-8B)" };
-      }
-    } catch (err) { console.warn("Together AI failed:", err); }
-  }
-
-  // 3. OPENROUTER
+  // 2. OPENROUTER (General Reasoning fallback)
   const openrouterKey = process.env.OPENROUTER_API_KEY;
   if (openrouterKey && !webSearch) {
     try {
-      console.log("Attempting OpenRouter completion...");
-      const freeModels = [
-        "deepseek/deepseek-chat:free",
-        "qwen/qwen-2-72b-instruct:free",
-        "meta-llama/llama-3.1-8b-instruct:free",
-        "cognitivecomputations/dolphin-mixtral-8x7b:free",
-        "undi95/toppy-m-7b:free"
-      ];
-      const model = freeModels[Math.floor(Math.random() * freeModels.length)];
+      console.log("[AI ROUTER] Routing to Reasoning Agent: OpenRouter...");
+      const model = "deepseek/deepseek-chat:free";
       
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -122,14 +179,14 @@ async function generateTextResilient(
         const text = data.choices?.[0]?.message?.content;
         if (text) return { response: text, provider: `OpenRouter (${model})` };
       }
-    } catch (err) { console.warn("OpenRouter failed:", err); }
+    } catch (err) { console.warn("OpenRouter Reasoning Agent failed:", err); }
   }
 
-  // 4. DEEPINFRA
+  // 3. DEEPINFRA
   const deepinfraKey = process.env.DEEPINFRA_API_KEY;
   if (deepinfraKey && !webSearch) {
     try {
-      console.log("Attempting DeepInfra completion...");
+      console.log("[AI ROUTER] Routing to Reasoning Agent: DeepInfra...");
       const response = await fetch("https://api.deepinfra.com/v1/openai/chat/completions", {
         method: "POST",
         headers: {
@@ -146,14 +203,13 @@ async function generateTextResilient(
         const text = data.choices?.[0]?.message?.content;
         if (text) return { response: text, provider: "DeepInfra (Llama-3)" };
       }
-    } catch (err) { console.warn("DeepInfra failed:", err); }
+    } catch (err) { console.warn("DeepInfra Reasoning Agent failed:", err); }
   }
 
-  // 5. POLLINATIONS AI (Ultimate fallback)
+  // 4. POLLINATIONS AI (Ultimate fallback & Search capability)
   try {
-    console.log("Attempting Pollinations AI completion (Free, No Key required)...");
+    console.log("[AI ROUTER] Routing to Pollinations AI (Fallback / Web Search)...");
     
-    // We rewrite the format for Pollinations since it prefers direct maps
     const polMessages = [
       { role: "system", content: systemInstruction },
       ...messages.map(m => ({
@@ -184,10 +240,9 @@ async function generateTextResilient(
       } catch (e) {
         // Not JSON, continue as text
       }
-      // Clean up Pollinations Ad text globally for any text completion
+      // Clean up Pollinations Ad text
       if (text.includes("Support Pollinations.AI")) {
         text = text.split("---").filter(p => !p.includes("Support Pollinations.AI")).join("---").trim();
-        // Remove trailing "---" if present after the split
         if (text.endsWith("---")) {
            text = text.slice(0, -3).trim();
         }
@@ -206,8 +261,8 @@ async function generateTextResilient(
 
   // Ultimate fallback
   return { 
-    response: "Error: Free AI providers are currently unavailable. Please try again in a few moments.", 
-    provider: "System Fallback",
+    response: "Error: AI providers are currently unavailable. The Auto-Fix system will retry shortly.", 
+    provider: "System Base Route",
     sources: null
   };
 }
@@ -346,7 +401,7 @@ async function startServer() {
 
   // REAL CHAT ROUTER WITH SYSTEM ROTATION FAILSAFE
   app.post("/api/ai/chat", async (req, res) => {
-    const { message, history = [], model, webSearch, systemInstruction } = req.body;
+    const { message, history = [], model, webSearch, systemInstruction, agentMode = "reasoning" } = req.body;
     if (!message) {
       return res.status(400).json({ error: "Message prompt is required." });
     }
@@ -356,7 +411,7 @@ async function startServer() {
       { role: "user", content: message }
     ];
 
-    const result = await generateTextResilient(messagesParam, model, webSearch, systemInstruction);
+    const result = await generateTextResilient(messagesParam, model, webSearch, systemInstruction, agentMode);
     res.json({
       response: result.response,
       model: result.provider,
@@ -389,9 +444,10 @@ async function startServer() {
 
     const result = await generateTextResilient(
       [{ role: "user", content: `Build a highly interactive ${tech} app based on: "${prompt}"` }],
-      "Pollinations AI", // Target free Pollinations AI
+      "Auto",
       false,
-      compilationSystemInstruction
+      compilationSystemInstruction,
+      "coding"
     );
 
     let cleanCode = result.response.trim();

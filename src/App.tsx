@@ -28,6 +28,7 @@ import SettingsView from './components/SettingsView';
 import PricingView from './components/PricingView';
 import AdminView from './components/AdminView';
 import HistoryView from './components/HistoryView';
+import AdBanner from './components/AdBanner';
 import { UserProfile, Generation, AppSettings, Notification, Message } from './types';
 
 // Firebase core integration imports
@@ -677,6 +678,14 @@ export default function App() {
                   language={settings.language}
                 />
               )}
+
+              {/* Global Bottom Ad */}
+              <div className="mt-8">
+                <AdBanner 
+                  adSlot="bottom_anchor"
+                  isPremium={profile.tier === 'Quantum Pro' || profile.tier === 'Enterprise Cosmic'}
+                />
+              </div>
 
             </main>
 

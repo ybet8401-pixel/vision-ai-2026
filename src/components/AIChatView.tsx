@@ -17,6 +17,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { Message, Generation } from '../types';
+import AdBanner from './AdBanner';
 
 interface AIChatViewProps {
   messages: Message[];
@@ -333,6 +334,9 @@ export default function AIChatView({
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {/* AdSense In-Content / Bottom Context */}
+      <AdBanner adSlot="chat_anchor" className="my-3 max-h-[90px]" />
 
       {/* Grounding Search Live Indicator */}
       {webSearchEnabled && (
