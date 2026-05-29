@@ -29,6 +29,15 @@ export interface UserProfile {
   avatar: string;
   joinedDate: string;
   streakDays: number;
+  isPremium?: boolean;
+  premiumUntil?: string;
+  usageStats?: {
+    appsGenerated: number;
+    imagesGenerated: number;
+    videosGenerated: number;
+    chatsSent: number;
+    adsWatched: number;
+  };
 }
 
 export interface AppSettings {

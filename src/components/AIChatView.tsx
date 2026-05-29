@@ -24,13 +24,15 @@ interface AIChatViewProps {
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   addGeneration: (gen: Omit<Generation, 'id' | 'date'>) => void;
   language: 'en' | 'ar';
+  checkUsageLimit?: () => Promise<boolean>;
 }
 
 export default function AIChatView({
   messages,
   setMessages,
   addGeneration,
-  language
+  language,
+  checkUsageLimit
 }: AIChatViewProps) {
   const isRtl = language === 'ar';
   const [input, setInput] = useState('');
@@ -75,6 +77,11 @@ export default function AIChatView({
   const handleSend = async (customPrompt?: string) => {
     const textToSend = customPrompt || input;
     if (!textToSend.trim() || loading) return;
+
+    if (checkUsageLimit) {
+      const isAllowed = await checkUsageLimit();
+      if (!isAllowed) return;
+    }
 
     const userMsg: Message = {
       id: Date.now().toString(),
@@ -216,7 +223,7 @@ export default function AIChatView({
             </div>
 
             <div className="space-y-2">
-              <h3 className="text-md sm:text-lg font-bold text-white">{isRtl ? 'المستكشف الإدراكي لـ Vision AI' : 'Initiate Cognitive Paradigm'}</h3>
+              <h3 className="text-md sm:text-lg font-bold text-white">{isRtl ? 'المستكشف الإدراكي لـ OmniNexa AI' : 'Initiate Cognitive Paradigm'}</h3>
               <p className="text-xs sm:text-sm text-neutral-400">
                 {isRtl 
                   ? 'اطرح أسئلتك البرمجية، اطلب تفتيت الخوارزميات، أو اكتب مقالات تفصيلية بأقوى نموذج مفتوح ذكي حالياً.' 

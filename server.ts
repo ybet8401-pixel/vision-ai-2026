@@ -4,6 +4,7 @@ import fs from "fs/promises";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import AdmZip from "adm-zip";
+import { GoogleGenAI } from "@google/genai";
 
 // Load environment variables from .env
 dotenv.config();
@@ -52,7 +53,7 @@ async function generateTextResilient(
   messages: { role: string; content: string }[], 
   modelName: string = "Auto", 
   webSearch: boolean = false, 
-  systemInstruction: string = "You are Vision AI v4.0, an ultra-advanced cognitive core designed to analyze prompts with deep research capabilities and maximum precision.",
+  systemInstruction: string = "You are OmniNexa AI v4.0, an ultra-advanced cognitive core designed to analyze prompts with deep research capabilities and maximum precision.",
   agentMode: AgentMode = "reasoning"
 ) {
   const prompt = messages[messages.length - 1]?.content || "";
@@ -817,17 +818,37 @@ async function startServer() {
       const job = videoJobs.get(jobId)!;
       job.status = 'processing';
       job.progress = 10;
-      job.logs.push(`[AI ORCHESTRATOR] Routing to Motion Agent for prompt: "${prompt.substring(0, 30)}..."`);
       
+      let enhancedPrompt = prompt;
       let selectedVideo = "";
       let videoSource = "";
 
       try {
-        // 1. FAL AI - Kling or Luma (Premium Frame-to-Video)
+        job.logs.push(`[AI ORCHESTRATOR] Enhancing prompt with Semantic Engine...`);
+        // 1. AI PROMPT ENHANCEMENT
+        const geminiKey = process.env.GEMINI_API_KEY;
+        if (geminiKey) {
+            try {
+              const ai = new GoogleGenAI({ apiKey: geminiKey });
+              const enhanced = await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: `Enhance this simple image-to-video motion prompt into a highly detailed cinematic prompt for a video generator. Add camera angles, realistic lighting, and smooth motion details if missing. Return ONLY the enhanced prompt string without any quotes or explanations. Original: "${prompt}" - Style: ${style}`
+              });
+              if (enhanced.text) {
+                enhancedPrompt = enhanced.text.trim();
+                job.logs.push(`[PROMPT ENHANCED] ${enhancedPrompt.substring(0, 40)}...`);
+              }
+            } catch (err: any) {
+              job.logs.push(`[WARN] Prompt enhancement failed: ${err.message}. Using original.`);
+            }
+        }
+        
+        job.progress = 25;
+
+        // 2. FAL AI - Kling Image-to-Video
         if (falKey && !selectedVideo) {
           try {
-            job.logs.push(`[MOTION AI] Calling FAL API (Kling Image-to-Video)...`);
-            job.progress = 30;
+            job.logs.push(`[MOTION AI] Calling FAL API (Kling)...`);
             const falRes = await fetchWithRetry("https://api.fal.ai/v1/kling/image-to-video", {
               method: "POST",
               headers: {
@@ -835,8 +856,8 @@ async function startServer() {
                 "Content-Type": "application/json"
               },
               body: JSON.stringify({
-                prompt: prompt,
-                image_url: image || undefined,
+                prompt: enhancedPrompt,
+                image_url: image, // FAL accepts data URIs for many endpoints, but ideally URLs
                 duration: "5",
                 aspect_ratio: "16:9"
               })
@@ -846,25 +867,26 @@ async function startServer() {
               const data = await falRes.json();
               if (data.video && data.video.url) {
                 selectedVideo = data.video.url;
-                videoSource = "FAL (Kling Motion AI)";
+                videoSource = "FAL (Kling)";
                 job.logs.push(`[SUCCESS] FAL API returned video.`);
               } else {
-                 job.logs.push(`[WARN] FAL returned unexpected data structure.`);
+                 job.logs.push(`[WARN] FAL returned unexpected data.`);
               }
             } else {
               const err = await falRes.text();
-              job.logs.push(`[ERROR] FAL failed with status ${falRes.status}: ${err}`);
+              job.logs.push(`[ERROR] FAL failed: ${falRes.status} ${err.substring(0, 100)}`);
             }
           } catch (e: any) {
             job.logs.push(`[WARN] FAL Video request failed: ${e.message}`);
           }
         }
 
-        // 2. REPLICATE - Stable Video Diffusion
+        job.progress = 45;
+
+        // 3. REPLICATE - Stable Video Diffusion
         if (replicateToken && !selectedVideo) {
           try {
-            job.logs.push(`[MOTION AI] Calling Replicate (SVD Image-to-Video)...`);
-            job.progress = 50;
+            job.logs.push(`[MOTION AI] Calling Replicate (SVD)...`);
             const repRes = await fetchWithRetry("https://api.replicate.com/v1/predictions", {
               method: "POST",
               headers: {
@@ -872,11 +894,11 @@ async function startServer() {
                 "Content-Type": "application/json"
               },
               body: JSON.stringify({
-                version: "3f0457e4619daac51203dedb472816fd4af51f3149fa7a9e0b5ffcf1b8172438", // stable-video-diffusion
+                version: "3f0457e4619daac51203dedb472816fd4af51f3149fa7a9e0b5ffcf1b8172438", // SVD
                 input: {
                   cond_aug: 0.02,
                   decoding_t: 14,
-                  image: image || undefined,
+                  image: image,
                   video_length: "14_frames_with_svd",
                   frames_per_second: 6,
                   motion_bucket_id: 127
@@ -889,8 +911,8 @@ async function startServer() {
               job.logs.push(`[INFO] Replicate Prediction Started. ID: ${data.id}`);
               
               // Polling loop for Replicate
-              for (let i = 0; i < 15; i++) {
-                await new Promise(resolve => setTimeout(resolve, 4000));
+              for (let i = 0; i < 20; i++) {
+                await new Promise(resolve => setTimeout(resolve, 3000));
                 
                 const pollRes = await fetch(`https://api.replicate.com/v1/predictions/${data.id}`, {
                   headers: { "Authorization": `Token ${replicateToken}` }
@@ -900,49 +922,101 @@ async function startServer() {
                   const pollData = await pollRes.json();
                   job.logs.push(`[POLL] Replicate Status: ${pollData.status}`);
                   if (pollData.status === 'succeeded' && pollData.output) {
-                    selectedVideo = pollData.output;
+                    selectedVideo = typeof pollData.output === 'string' ? pollData.output : pollData.output[0];
                     videoSource = "Replicate (SVD)";
                     break;
                   } else if (pollData.status === 'failed') {
-                    job.logs.push(`[ERROR] Replicate failed.`);
+                    job.logs.push(`[ERROR] Replicate failed internally: ${pollData.error}`);
                     break;
                   }
                 }
               }
             } else {
                const err = await repRes.text();
-               job.logs.push(`[ERROR] Replicate failed with status ${repRes.status}: ${err}`);
+               job.logs.push(`[ERROR] Replicate failed: ${repRes.status} ${err.substring(0, 100)}`);
             }
           } catch (e: any) {
-            job.logs.push(`[WARN] Replicate Video request failed: ${e.message}`);
+            job.logs.push(`[WARN] Replicate request failed: ${e.message}`);
           }
         }
 
-        // 3. Hugging Face Inference API
+        job.progress = 65;
+
+        // 4. RUNWAY ML (Gen-3 Image to Video via gen3a)
+        const runwayToken = process.env.RUNWAY_API_SECRET || process.env.RUNWAY_API_KEY;
+        if (runwayToken && !selectedVideo) {
+          try {
+             job.logs.push(`[MOTION AI] Calling RunwayML (Gen-3 Alpha)...`);
+             const runRes = await fetchWithRetry("https://api.runwayml.com/v1/image_to_video", {
+               method: "POST",
+               headers: {
+                 "Authorization": `Bearer ${runwayToken}`,
+                 "X-Runway-Version": "2024-09-13",
+                 "Content-Type": "application/json"
+               },
+               body: JSON.stringify({
+                 promptText: enhancedPrompt,
+                 promptImage: image, // Data URI format
+                 model: "gen3a_turbo" 
+               })
+             });
+
+             if (runRes.ok) {
+               const runData = await runRes.json();
+               job.logs.push(`[INFO] Runway Task ID: ${runData.id}`);
+               
+               // Poll Runway Task
+               for(let i=0; i < 20; i++) {
+                  await new Promise(resolve => setTimeout(resolve, 3000));
+                  const pollRes = await fetch(`https://api.runwayml.com/v1/tasks/${runData.id}`, {
+                    headers: { "Authorization": `Bearer ${runwayToken}`, "X-Runway-Version": "2024-09-13" }
+                  });
+                  if (pollRes.ok) {
+                    const pollData = await pollRes.json();
+                    job.logs.push(`[POLL] Runway Status: ${pollData.status}`);
+                    if (pollData.status === 'SUCCEEDED' && pollData.url) {
+                      selectedVideo = pollData.url;
+                      videoSource = "RunwayML (Gen-3 Turbo)";
+                      break;
+                    } else if (pollData.status === 'FAILED') {
+                      job.logs.push(`[ERROR] Runway failed.`);
+                      break;
+                    }
+                  }
+               }
+             } else {
+               const err = await runRes.text();
+               job.logs.push(`[ERROR] Runway failed: ${runRes.status} ${err.substring(0, 100)}`);
+             }
+          } catch(e: any) {
+             job.logs.push(`[WARN] RunwayML request failed: ${e.message}`);
+          }
+        }
+
+        job.progress = 85;
+
+        // 5. Hugging Face Inference API Backup (Text-to-Video only since open i2v is rare)
         if (hfToken && !selectedVideo) {
           try {
-            job.logs.push(`[MOTION AI] Calling Hugging Face Video Generator...`);
-            job.progress = 80;
-            const keywords = prompt.substring(0, 100);
-            
+            job.logs.push(`[MOTION AI] Calling Hugging Face (Text-to-Video Backup)...`);
             const hfRes = await fetchWithRetry("https://router.huggingface.co/hf-inference/models/ali-vilab/text-to-video-ms-1.7b", {
               method: "POST",
               headers: {
                 "Authorization": `Bearer ${hfToken}`,
                 "Content-Type": "application/json"
               },
-              body: JSON.stringify({ inputs: keywords })
+              body: JSON.stringify({ inputs: enhancedPrompt.substring(0, 100) })
             });
             
             if (hfRes.ok) {
               const buffer = Buffer.from(await hfRes.arrayBuffer());
               const base64 = buffer.toString('base64');
               selectedVideo = `data:video/mp4;base64,${base64}`;
-              videoSource = `Hugging Face (ali-vilab/text-to-video-ms-1.7b) + ${style || 'Custom Style'}`;
+              videoSource = `Hugging Face (Backup)`;
               job.logs.push(`[SUCCESS] HF API returned video.`);
             } else {
               const err = await hfRes.text();
-              job.logs.push(`[WARN] HF returned status ${hfRes.status}: ${err}`);
+              job.logs.push(`[WARN] HF returned status ${hfRes.status}: ${err.substring(0,100)}`);
             }
           } catch(e: any) {
             job.logs.push(`[WARN] HF Video request failed: ${e.message}`);
@@ -950,6 +1024,7 @@ async function startServer() {
         }
 
         job.progress = 100;
+        
         if (!selectedVideo) {
            job.status = 'failed';
            job.error = "All configured providers failed to generate the video. Please check API quotas or logs.";
@@ -1014,7 +1089,7 @@ async function startServer() {
 
   // REAL ZIP PACKAGER (COMPILER EXPORT)
   app.post("/api/apk/compile", async (req, res) => {
-    const { name, appId = "com.visionai.app", code } = req.body;
+    const { name, appId = "com.omninexa.app", code } = req.body;
     if (!name || !code) {
       return res.status(400).json({ error: "Missing compile source code variables." });
     }
@@ -1048,13 +1123,13 @@ async function startServer() {
       res.json({
         success: true,
         logs: [
-          "[Vision zip system] Initializing packaging engine...",
-          "[Vision zip system] Analyzing code AST and structure...",
-          "[Vision zip system] Injecting responsive HTML static web assets...",
-          `[Vision zip system] Generating PWA and local execution context for ID: ${appId}...`,
-          "[Vision zip system] Applying heavy compression...",
-          "[Vision zip system] Validating final executable bundle...",
-          `[Vision zip system] Successfully compiled real, functioning codebase for ${name}.`
+          "[OmniNexa zip system] Initializing packaging engine...",
+          "[OmniNexa zip system] Analyzing code AST and structure...",
+          "[OmniNexa zip system] Injecting responsive HTML static web assets...",
+          `[OmniNexa zip system] Generating PWA and local execution context for ID: ${appId}...`,
+          "[OmniNexa zip system] Applying heavy compression...",
+          "[OmniNexa zip system] Validating final executable bundle...",
+          `[OmniNexa zip system] Successfully compiled real, functioning codebase for ${name}.`
         ],
         apkDownloadUrl: `data:application/zip;base64,${zipBase64}`,
         apkName: `${name.toLowerCase().replace(/[^a-z0-9]/g, "_")}_project.zip`
@@ -1062,6 +1137,144 @@ async function startServer() {
     } catch (err: any) {
       console.error("Zip generation error:", err);
       res.status(500).json({ error: "Failed to compile project zip." });
+    }
+  });
+
+  // --- SEO ROUTING (Robots & Sitemap) ---
+  app.get("/robots.txt", (req, res) => {
+    res.type("text/plain");
+    res.send(`User-agent: *\nAllow: /\n\nSitemap: https://omninexa.ai/sitemap.xml`);
+  });
+
+  app.get("/sitemap.xml", (req, res) => {
+    res.type("application/xml");
+    res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://omninexa.ai/</loc>
+    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://omninexa.ai/dashboard</loc>
+    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
+    <changefreq>always</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://omninexa.ai/pricing</loc>
+    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+</urlset>`);
+  });
+
+  // --- PAYPAL CHECKOUT INTEGRATION ---
+  app.post("/api/payments/checkout", async (req, res) => {
+    const { plan, userId } = req.body;
+    
+    // Fallback if env missing
+    if (!process.env.PAYPAL_CLIENT_ID || !process.env.PAYPAL_CLIENT_SECRET) {
+      return res.status(200).json({ 
+        url: "/?payment=success&token=simulated_token",
+        msg: "Using simulated PayPal due to missing credentials."
+      });
+    }
+
+    try {
+      // 1. Get Access Token
+      const auth = Buffer.from(process.env.PAYPAL_CLIENT_ID + ":" + process.env.PAYPAL_CLIENT_SECRET).toString("base64");
+      const tokenRes = await fetch("https://api-m.sandbox.paypal.com/v1/oauth2/token", {
+        method: "POST",
+        headers: {
+          "Authorization": `Basic ${auth}`,
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: "grant_type=client_credentials"
+      });
+      const tokenData = await tokenRes.json();
+      const accessToken = tokenData.access_token;
+
+      // 2. Create Order
+      const amount = plan === 'pro' ? "70.00" : "0.00"; // $70 for 7 days
+      const orderRes = await fetch("https://api-m.sandbox.paypal.com/v2/checkout/orders", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          intent: "CAPTURE",
+          purchase_units: [{ 
+            amount: { currency_code: "USD", value: amount },
+            custom_id: userId // Store user ID securely 
+          }],
+          application_context: {
+            return_url: "http://localhost:3000/?payment=success",
+            cancel_url: "http://localhost:3000/?payment=cancel"
+          }
+        })
+      });
+      
+      const orderData = await orderRes.json();
+      const approveLink = orderData.links?.find((link: any) => link.rel === "approve")?.href;
+      
+      if (approveLink) {
+        res.json({ url: approveLink, id: orderData.id });
+      } else {
+        res.status(500).json({ error: "Failed to create PayPal order." });
+      }
+    } catch (err: any) {
+      console.error("PayPal Error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Securely capture and verify PayPal payment on Backend
+  app.post("/api/payments/capture", async (req, res) => {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ error: "Missing token" });
+
+    if (!process.env.PAYPAL_CLIENT_ID || !process.env.PAYPAL_CLIENT_SECRET) {
+      return res.json({ success: true, fake: true });
+    }
+
+    try {
+      const auth = Buffer.from(process.env.PAYPAL_CLIENT_ID + ":" + process.env.PAYPAL_CLIENT_SECRET).toString("base64");
+      const tokenRes = await fetch("https://api-m.sandbox.paypal.com/v1/oauth2/token", {
+        method: "POST",
+        headers: {
+          "Authorization": `Basic ${auth}`,
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: "grant_type=client_credentials"
+      });
+      const tData = await tokenRes.json();
+      const accessToken = tData.access_token;
+
+      // Capture the payment using Order ID (token)
+      const captureRes = await fetch(`https://api-m.sandbox.paypal.com/v2/checkout/orders/${token}/capture`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        }
+      });
+
+      const captureData = await captureRes.json();
+      if (captureData.status === "COMPLETED") {
+        return res.json({ 
+          success: true, 
+          transactionId: captureData.purchase_units[0].payments.captures[0].id,
+          userId: captureData.purchase_units[0].custom_id
+        });
+      } else {
+        return res.status(400).json({ error: "Payment not completed", details: captureData });
+      }
+    } catch (err: any) {
+      return res.status(500).json({ error: "Capture failed", message: err.message });
     }
   });
 
@@ -1090,7 +1303,7 @@ async function startServer() {
   });
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Vision Quantum AI Server executing locally on port ${PORT}`);
+    console.log(`OmniNexa Quantum AI Server executing locally on port ${PORT}`);
   });
 }
 

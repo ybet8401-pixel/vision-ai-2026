@@ -29,6 +29,7 @@ import JSZip from 'jszip';
 interface AIWebsiteViewProps {
   addGeneration: (gen: Omit<Generation, 'id' | 'date'>) => void;
   language: 'en' | 'ar';
+  checkUsageLimit?: () => Promise<boolean>;
 }
 
 interface SavedProject {
@@ -42,7 +43,8 @@ interface SavedProject {
 
 export default function AIWebsiteView({
   addGeneration,
-  language
+  language,
+  checkUsageLimit
 }: AIWebsiteViewProps) {
   const isRtl = language === 'ar';
   
@@ -60,8 +62,8 @@ export default function AIWebsiteView({
   
   // APK dialog state
   const [showApkDialog, setShowApkDialog] = useState(false);
-  const [apkAppName, setApkAppName] = useState('My Vision App');
-  const [apkPkgName, setApkPkgName] = useState('com.visionai.customapp');
+  const [apkAppName, setApkAppName] = useState('My OmniNexa App');
+  const [apkPkgName, setApkPkgName] = useState('com.omninexa.customapp');
   const [apkLogs, setApkLogs] = useState<string[]>([]);
   const [isApkCompiling, setIsApkCompiling] = useState(false);
   const [apkReady, setApkReady] = useState(false);
@@ -69,7 +71,7 @@ export default function AIWebsiteView({
   // Local Database / Projects state
   const [savedProjects, setSavedProjects] = useState<SavedProject[]>([]);
   const [projectName, setProjectName] = useState('My Celestial App');
-  const [projectDesc, setProjectDesc] = useState('Compiled via Vision AI core console');
+  const [projectDesc, setProjectDesc] = useState('Compiled via OmniNexa AI core console');
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -83,7 +85,7 @@ export default function AIWebsiteView({
       }
     } catch (err) {
       console.warn("Could not fetch server projects, loading localStorage backup:", err);
-      const local = localStorage.getItem('vision_projects');
+      const local = localStorage.getItem('omninexa_projects');
       if (local) setSavedProjects(JSON.parse(local));
     }
   };
@@ -115,6 +117,11 @@ export default function AIWebsiteView({
     const textToBuild = customPrompt || prompt;
     const activeTech = customTech || techType;
     if (!textToBuild.trim() || loading) return;
+
+    if (checkUsageLimit) {
+      const allowed = await checkUsageLimit();
+      if (!allowed) return;
+    }
 
     setLoading(true);
     setGeneratedHtml(null);
@@ -152,7 +159,7 @@ export default function AIWebsiteView({
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Vision Quantum Workspace & Battle Arena</title>
+  <title>OmniNexa Quantum Workspace & Battle Arena</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
@@ -170,7 +177,7 @@ export default function AIWebsiteView({
       </div>
       <div>
         <h1 class="text-sm font-bold tracking-tight text-white uppercase flex items-center gap-2">
-          Vision Quantum Dual-Core Sandbox
+          OmniNexa Quantum Dual-Core Sandbox
           <span class="text-[9px] bg-red-950/40 border border-red-800 text-red-400 px-1.5 py-0.5 rounded tracking-widest font-mono">v4.2 PRO</span>
         </h1>
         <p class="text-[10px] text-slate-400 font-mono">Simulating advanced interactive loops: Free-Fire mode vs. Replit mode</p>
@@ -331,7 +338,7 @@ export default function AIWebsiteView({
     </div>
     <div class="flex gap-4">
       <span>Compiled Successfully</span>
-      <span>© Vision AI Labs</span>
+      <span>© OmniNexa AI Labs</span>
     </div>
   </footer>
 
@@ -886,7 +893,7 @@ export default function AIWebsiteView({
     
     // Bundle files symmetrically
     zip.file("index.html", editableCode);
-    zip.file("README.md", `# Vision AI Generated Project\n\nGenerated with high-fidelity on ${new Date().toLocaleDateString()}.\n\n## Instructions\nSimply open the 'index.html' file directly in any modern web browser or host it on your favorite CDN!`);
+    zip.file("README.md", `# OmniNexa AI Generated Project\n\nGenerated with high-fidelity on ${new Date().toLocaleDateString()}.\n\n## Instructions\nSimply open the 'index.html' file directly in any modern web browser or host it on your favorite CDN!`);
     
     try {
       const blob = await zip.generateAsync({ type: "blob" });
@@ -945,7 +952,7 @@ export default function AIWebsiteView({
       };
       const updated = [newProj, ...savedProjects];
       setSavedProjects(updated);
-      localStorage.setItem('vision_projects', JSON.stringify(updated));
+      localStorage.setItem('omninexa_projects', JSON.stringify(updated));
       setSaveSuccess(true);
       setTimeout(() => {
         setSaveSuccess(false);
@@ -965,7 +972,7 @@ export default function AIWebsiteView({
     } catch (err) {
       const updated = savedProjects.filter(p => p.id !== id);
       setSavedProjects(updated);
-      localStorage.setItem('vision_projects', JSON.stringify(updated));
+      localStorage.setItem('omninexa_projects', JSON.stringify(updated));
     }
   };
 
@@ -1310,7 +1317,7 @@ export default function AIWebsiteView({
               ) : (
                 <iframe 
                   srcDoc={generatedHtml}
-                  title="Vision AI Sandbox Renderer"
+                  title="OmniNexa AI Sandbox Renderer"
                   className="w-full h-full border-0 bg-white"
                   sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
                 />

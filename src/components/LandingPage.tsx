@@ -16,11 +16,15 @@ import {
   Lock
 } from 'lucide-react';
 
+import TopBannerAd from './ads/TopBannerAd';
+import MultiplexAd from './ads/MultiplexAd';
+
 interface LandingPageProps {
   onLoginTrigger: () => void;
   onExploreTrigger: () => void;
   language: 'en' | 'ar';
 }
+
 
 export default function LandingPage({
   onLoginTrigger,
@@ -90,7 +94,7 @@ export default function LandingPage({
             <Sparkles className="w-5 h-5 text-white animate-pulse" />
           </div>
           <span className="text-base sm:text-lg font-bold tracking-tight text-white uppercase font-sans">
-            Vision <span className="text-cyan-400">AI</span>
+            OmniNexa <span className="text-cyan-400">AI</span>
           </span>
         </div>
 
@@ -111,8 +115,13 @@ export default function LandingPage({
         </div>
       </nav>
 
+      {/* Top Banner Ad below Navbar */}
+      <div className="mt-6 z-20 relative">
+        <TopBannerAd />
+      </div>
+
       {/* Hero Section */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-6 flex flex-col justify-center py-16 lg:py-24 relative z-10">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-6 flex flex-col justify-center py-10 lg:py-16 relative z-10">
         <div className="text-center max-w-3xl mx-auto space-y-6">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-950/30 border border-indigo-800/40 font-mono text-[10px] sm:text-xs text-indigo-400 uppercase tracking-widest mx-auto animate-pulse">
             <Flame className="w-3.5 h-3.5 text-indigo-400" />
@@ -185,6 +194,8 @@ export default function LandingPage({
             })}
           </div>
         </section>
+
+        <MultiplexAd />
       </main>
 
       {/* Footer */}
@@ -192,7 +203,7 @@ export default function LandingPage({
         <p className="font-mono tracking-wider">
           {isRtl ? 'شغف، مستقبل، وتمكين كامل بموجب محركات الذكاء الاصطناعي مجاناً.' : 'SECURE L3 PROTOCOL. ALL COGNITIVE PIPELINES ACTIVE.'}
         </p>
-        <p className="mt-1">© 2026 Vision AI Inc. Generated via Google AI Studio.</p>
+        <p className="mt-1">© 2026 OmniNexa AI Inc. Generated via Google AI Studio.</p>
       </footer>
     </div>
   );

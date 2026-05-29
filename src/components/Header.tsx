@@ -54,7 +54,7 @@ export default function Header({
       case 'pricing': return isRtl ? 'خطط الترقية الكونية' : 'Pipeline Subscription Matrices';
       case 'settings': return isRtl ? 'لوحة الإعدادات' : 'System Variables & Parameters';
       case 'admin': return isRtl ? 'لوحة المشرف العام' : 'Quantum Central Overseer';
-      default: return 'Vision AI';
+      default: return 'OmniNexa AI';
     }
   };
 

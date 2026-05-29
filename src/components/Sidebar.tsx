@@ -79,7 +79,7 @@ export default function Sidebar({
             </div>
             <div>
               <span className="text-lg font-bold tracking-tight text-white uppercase font-sans">
-                Vision <span className="text-cyan-400">AI</span>
+                OmniNexa <span className="text-cyan-400">AI</span>
               </span>
               <div className="text-[9px] font-mono text-cyan-500 uppercase tracking-widest leading-none">v4.0 Quantum</div>
             </div>

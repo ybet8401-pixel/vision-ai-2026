@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { UserProfile, Generation } from '../types';
 import AdBanner from './AdBanner';
+import DashboardAd from './ads/DashboardAd';
 
 interface DashboardViewProps {
   profile: UserProfile;
@@ -29,25 +30,35 @@ export default function DashboardView({
 }: DashboardViewProps) {
   const isRtl = language === 'ar';
 
+  const stats = profile.usageStats || { appsGenerated: 0, imagesGenerated: 0, videosGenerated: 0, chatsSent: 0, adsWatched: 0 };
+  const getPremiumStatusText = () => {
+    if (!profile.isPremium) return isRtl ? 'حساب مجاني مزود بإعلانات' : 'Free Ad-Supported Account';
+    if (profile.premiumUntil) {
+      const days = Math.ceil((new Date(profile.premiumUntil).getTime() - new Date().getTime()) / (1000 * 3600 * 24));
+      return isRtl ? `حساب احترافي (متبقي ${days} أيام)` : `Quantum Pro (${days} days left)`;
+    }
+    return isRtl ? 'حساب احترافي دائم' : 'Lifetime Pro Account';
+  };
+
   const metrics = [
     {
-      title: isRtl ? 'حالة مصفوفة المعالجة' : 'Neural Grid Latency',
-      value: '2.4ms',
-      desc: isRtl ? 'أسرع من 99٪ من المنصات' : 'Command Pipeline Output',
+      title: isRtl ? 'استخدام التطبيقات والمواقع' : 'Apps & Sites Built',
+      value: stats.appsGenerated.toString(),
+      desc: getPremiumStatusText(),
       icon: Cpu,
       color: 'text-cyan-400 bg-cyan-950/20 border-cyan-800/40'
     },
     {
-      title: isRtl ? 'سرعة توليد النماذج' : 'Inference Pipeline Velocity',
-      value: '840 words/m',
-      desc: isRtl ? 'أداء نموذج L3 فائق السرعة' : 'Average response timeline',
+      title: isRtl ? 'إجمالي الصور والفيديو' : 'Visual Medias',
+      value: (stats.imagesGenerated + stats.videosGenerated).toString(),
+      desc: isRtl ? 'عدد التصاميم المنتجة' : 'Total creations compiled',
       icon: Activity,
       color: 'text-indigo-400 bg-indigo-950/20 border-indigo-800/40'
     },
     {
-      title: isRtl ? 'مجموع العمليات الإدراكية' : 'Platform Transactions',
-      value: generations.length.toString(),
-      desc: isRtl ? 'مشروع محفوظ بسجل محلي' : 'Total projects synthesized',
+      title: isRtl ? 'إجمالي الإعلانات المشاهدة' : 'Ads Engaged',
+      value: stats.adsWatched.toString(),
+      desc: isRtl ? 'دعم وتشغيل منصتنا' : 'Total rewards collected',
       icon: Layers,
       color: 'text-purple-400 bg-purple-950/20 border-purple-800/40 font-mono'
     }
@@ -125,6 +136,8 @@ export default function DashboardView({
         })}
       </div>
 
+      <DashboardAd />
+
       {/* Two Columns Dashboard Content */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         
@@ -138,7 +151,7 @@ export default function DashboardView({
               </span>
               {isRtl ? 'المعالج المركزي والبث الحي' : 'Neural Pipeline Stream'}
             </h3>
-            <span className="text-[10px] font-mono text-neutral-500">Node: Vision-Quantum-4</span>
+            <span className="text-[10px] font-mono text-neutral-500">Node: OmniNexa-Quantum-4</span>
           </div>
 
           {/* Quick Shortcuts Matrix */}

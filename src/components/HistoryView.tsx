@@ -100,7 +100,7 @@ export default function HistoryView({
                   </div>
                   <div>
                     <h4 className="text-xs sm:text-sm font-bold text-white capitalize">{item.title}</h4>
-                    <span className="text-[10px] text-neutral-500 font-mono uppercase tracking-wide">{item.modelUsed || 'Vision AI Model L3'}</span>
+                    <span className="text-[10px] text-neutral-500 font-mono uppercase tracking-wide">{item.modelUsed || 'OmniNexa AI Model L3'}</span>
                   </div>
                 </div>
 

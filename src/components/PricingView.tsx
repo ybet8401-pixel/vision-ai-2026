@@ -1,36 +1,65 @@
+import { useState } from 'react';
 import { Check, Sparkles, Shield, Cpu, Zap, BadgeAlert } from 'lucide-react';
 
 interface PricingViewProps {
   language: 'en' | 'ar';
+  userId?: string | null;
 }
 
 export default function PricingView({
-  language
+  language,
+  userId
 }: PricingViewProps) {
   const isRtl = language === 'ar';
+  const [loading, setLoading] = useState(false);
+
+  const handleCheckout = async (plan: string) => {
+    if (plan === 'free') {
+      alert(isRtl ? 'المستوى مجاني ومكفول بالكامل حالياً.' : 'Integration successful. Access is authenticated.');
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const res = await fetch('/api/payments/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan, userId })
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.error || 'Payment initialization failed');
+      }
+    } catch (e) {
+      alert('Network error connecting to payment gateway.');
+    }
+    setLoading(false);
+  };
 
   const plans = [
     {
       title: isRtl ? 'المستوى الأساسي' : 'Standard Voyager',
       price: '$0',
       period: isRtl ? 'مجاني للأبد' : 'Free Forever',
-      desc: isRtl ? 'بوابة المعالجة لعامة النماذج المفتوحة' : 'Basic open-source models access bounds',
+      desc: isRtl ? 'الوصول الأساسي مع إعلانات وعلامة مائية' : 'Basic access supported by ads (with watermarks)',
       features: isRtl 
-        ? ['الوصول لـ DeepSeek و Qwen و Llama', 'جيل صور فائق السرعة', 'أصوات محلية بيومترية حية', 'محفوظات السجلات حتي 10 عناصر']
-        : ['Full access to DeepSeek, Qwen, and Llama', 'Stable Diffusion 4K images synthesiser', 'Biometric browser TTS scripts', 'Up to 10 stored manifestations'],
-      buttonText: isRtl ? 'المستوى النشط حالياً' : 'Active Channel Pool',
+        ? ['الاستخدام المحدود للتطبيقات (إعلانات بعد 4 استخدام)', 'محدودية في الصور والفيديو (إعلانات كل 2 استخدام)', 'سرعة رندرة عادية (Standard Speed)', 'وجود علامة مائية على المشاريع']
+        : ['Limited usage (Ads after 4 apps generated)', 'Ad unlocks needed every 2 image/video generations', 'Standard render speed and public queue', 'Media may contain watermarks'],
+      buttonText: isRtl ? 'المستوى النشط حالياً' : 'Active Plan',
       active: true,
       color: 'border-neutral-900 bg-neutral-950/40 text-neutral-400'
     },
     {
       title: isRtl ? 'محترفي الكوانتم' : 'Quantum Pro',
-      price: '$29',
-      period: isRtl ? '/شهر' : '/operator month',
-      desc: isRtl ? 'حساب متكامل للاجتهاد والتطوير الشامل' : 'Maximum reasoning thresholds with elite speed',
+      price: '$70',
+      period: isRtl ? '/ أسبوع (7 أيام)' : '/ 7 Days',
+      desc: isRtl ? 'حساب متكامل للاجتهاد والتطوير بلا حدود' : 'Maximum reasoning thresholds with elite speed & no ads',
       features: isRtl 
-        ? ['كل أدوات المستوى الأساسي', 'استرجاع غير محدود للصور والويب والبرمجة', 'بناء نماذج سينمائية وتوسعة فيديو', 'أولوية معالجة علي الخادم الكمي المباشر', 'دعم مخصص حتي خط L5']
-        : ['Everything in Standard Voyager', 'Unlimited webpage builder compiles', 'Cinematic Veo video rendering support', 'Priority high-speed L3 API weight maps', 'Dedicated developer channel assistance'],
-      buttonText: isRtl ? 'الترقية للمصفوفة الاحترافية' : 'Integrate Pro Matrix',
+        ? ['بدون إعلانات نهائياً', 'استخدام غير محدود للتطبيقات والصور والفيديو', 'أولوية معالجة علي الخادم الكمي وبدون انتظار', 'بدون علامة مائية (No Watermark)', 'أدوات ذكاء اصطناعي إضافية وحفظ للمشاريع']
+        : ['Completely Ad-Free Experience', 'Unlimited App, Video & Image Generations', 'Queue Priority & Maximum Rendering Speed', 'No Watermarks on Output Media', 'Exclusive AI Tools & Cloud Project Saving'],
+      buttonText: isRtl ? 'الترقية الآن (PayPal)' : 'Upgrade to Pro (PayPal)',
       active: false,
       color: 'border-indigo-505 bg-indigo-950/15 text-indigo-400 border border-indigo-900/50 relative shadow-lg shadow-indigo-500/5'
     }
@@ -84,15 +113,17 @@ export default function PricingView({
             </div>
 
             <button 
-              onClick={() => alert(isRtl ? 'المستوى مجاني ومكفول بالكامل حالياً.' : 'Integration successful. Access is authenticated.')}
+              onClick={() => handleCheckout(p.title.includes('Pro') || p.title.includes('محترفي') ? 'pro' : 'free')}
+              disabled={loading}
               className={`
                 w-full py-3.5 mt-8 rounded-xl font-bold text-xs tracking-wider uppercase transition duration-300 cursor-pointer
+                ${loading ? 'opacity-50 cursor-not-allowed' : ''}
                 ${p.active 
                   ? 'bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white' 
                   : 'bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white shadow-lg shadow-indigo-500/10'}
               `}
             >
-              {p.buttonText}
+              {loading && !p.active ? 'Processing...' : p.buttonText}
             </button>
           </div>
         ))}

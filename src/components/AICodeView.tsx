@@ -18,11 +18,13 @@ import jsPDF from 'jspdf';
 interface AICodeViewProps {
   addGeneration: (gen: Omit<Generation, 'id' | 'date'>) => void;
   language: 'en' | 'ar';
+  checkUsageLimit?: () => Promise<boolean>;
 }
 
 export default function AICodeView({
   addGeneration,
-  language
+  language,
+  checkUsageLimit
 }: AICodeViewProps) {
   const isRtl = language === 'ar';
   const [prompt, setPrompt] = useState('');
@@ -52,6 +54,12 @@ export default function AICodeView({
 
   const handleSynthesize = async () => {
     if (!prompt.trim() || loading) return;
+    
+    if (checkUsageLimit) {
+      const allowed = await checkUsageLimit();
+      if (!allowed) return;
+    }
+
     setLoading(true);
     setResultCode(null);
 

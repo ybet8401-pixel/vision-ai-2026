@@ -15,15 +15,22 @@ import {
   Info
 } from 'lucide-react';
 import { Generation } from '../types';
+import SidebarAd from './ads/SidebarAd';
+import RewardedAd from './ads/RewardedAd';
+import InArticleAd from './ads/InArticleAd';
 
 interface AIImageViewProps {
   addGeneration: (gen: Omit<Generation, 'id' | 'date'>) => void;
   language: 'en' | 'ar';
+  checkUsageLimit?: () => Promise<boolean>;
+  isPremium?: boolean;
 }
 
 export default function AIImageView({
   addGeneration,
-  language
+  language,
+  checkUsageLimit,
+  isPremium
 }: AIImageViewProps) {
   const isRtl = language === 'ar';
   
@@ -112,6 +119,12 @@ export default function AIImageView({
 
   const handleGenerate = async () => {
     if (!prompt.trim() || loading) return;
+    
+    if (checkUsageLimit) {
+      const allowed = await checkUsageLimit();
+      if (!allowed) return;
+    }
+
     setLoading(true);
     setImageUrl(null);
     setIsImageLoaded(false);
@@ -185,7 +198,7 @@ export default function AIImageView({
     if (!imageUrl) return;
     const link = document.createElement('a');
     link.href = imageUrl;
-    link.download = `vision_forge_${Date.now()}.png`;
+    link.download = `omninexa_forge_${Date.now()}.png`;
     link.target = "_blank";
     link.click();
   };
@@ -381,6 +394,7 @@ export default function AIImageView({
           )}
         </button>
 
+        <RewardedAd />
       </div>
 
       {/* Visual Render Canvas Area (3 columns) */}
@@ -451,12 +465,18 @@ export default function AIImageView({
               )}
               <img 
                 src={imageUrl} 
-                alt="Vision AI Smart Frame Output" 
+                alt="OmniNexa AI Smart Frame Output" 
                 className={`rounded-xl max-h-[440px] max-w-full object-contain shadow-md hover:scale-[1.01] transition-all duration-700 border border-neutral-900 ${isImageLoaded ? 'opacity-100 blur-0' : 'opacity-0 blur-md'}`}
                 referrerPolicy="no-referrer"
                 loading="lazy"
                 onLoad={() => setIsImageLoaded(true)}
               />
+              {!isPremium && isImageLoaded && (
+                <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg border border-neutral-800 flex items-center gap-2 pointer-events-none">
+                  <Sparkles className="w-4 h-4 text-cyan-500" />
+                  <span className="text-white text-xs font-mono font-bold tracking-widest opacity-80">OmniNexa AI Trial</span>
+                </div>
+              )}
             </div>
 
             {/* Controls, Telemetry labels and action buttons footer */}
@@ -489,6 +509,7 @@ export default function AIImageView({
 
             </div>
 
+            <InArticleAd />
           </div>
         )}
 

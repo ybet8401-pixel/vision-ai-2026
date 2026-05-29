@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Sparkles, 
   Video, 
@@ -15,15 +15,21 @@ import {
 } from 'lucide-react';
 import { Generation } from '../types';
 import AIVideoPlayer from './AIVideoPlayer';
+import RewardedAd from './ads/RewardedAd';
+import InArticleAd from './ads/InArticleAd';
 
 interface AIVideoViewProps {
   addGeneration: (gen: Omit<Generation, 'id' | 'date'>) => void;
   language: 'en' | 'ar';
+  checkUsageLimit?: () => Promise<boolean>;
+  isPremium?: boolean;
 }
 
 export default function AIVideoView({
   addGeneration,
-  language
+  language,
+  checkUsageLimit,
+  isPremium
 }: AIVideoViewProps) {
   const isRtl = language === 'ar';
   const [prompt, setPrompt] = useState('');
@@ -126,6 +132,12 @@ export default function AIVideoView({
 
   const handleStartGenerate = async () => {
     if (!prompt.trim() || !imagePreview || loading) return;
+    
+    if (checkUsageLimit) {
+      const allowed = await checkUsageLimit();
+      if (!allowed) return;
+    }
+
     setLoading(true);
     setActiveStep(0);
     setVideoUrl(null);
@@ -212,8 +224,14 @@ export default function AIVideoView({
         </div>
 
         {errorMsg && (
-          <div className="p-3 bg-red-900/20 border border-red-500/30 rounded-lg text-red-400 text-xs font-bold">
-            {errorMsg}
+          <div className="p-4 bg-red-950/40 border border-red-500/30 rounded-xl text-red-400 text-xs sm:text-sm font-bold flex flex-col gap-3">
+            <span>{errorMsg}</span>
+            <button 
+              onClick={handleStartGenerate}
+              className="bg-red-900/50 hover:bg-red-800 text-white py-2 rounded-lg transition"
+            >
+              {isRtl ? 'إعادة المحاولة' : 'Retry Generation'}
+            </button>
           </div>
         )}
 
@@ -267,6 +285,8 @@ export default function AIVideoView({
             </>
           )}
         </button>
+
+        <RewardedAd />
       </div>
 
       {/* Presentation screen (3 cols) */}
@@ -347,13 +367,19 @@ export default function AIVideoView({
         {/* Real output display frame */}
         {videoUrl && !loading && (
           <div className="space-y-6 flex-1 flex flex-col justify-between items-center w-full max-w-2xl mx-auto">
-            <div className="bg-neutral-950/40 p-2.5 rounded-2xl border border-neutral-900 shadow-xl overflow-hidden flex items-center justify-center w-full">
+            <div className="bg-neutral-950/40 p-2.5 rounded-2xl border border-neutral-900 shadow-xl overflow-hidden flex items-center justify-center w-full relative">
               <AIVideoPlayer 
                 src={videoUrl}
                 language={language}
                 aspectRatioLabel="16:9"
                 fpsLabel={60}
               />
+              {!isPremium && (
+                <div className="absolute bottom-6 right-6 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg border border-neutral-800 flex items-center gap-2 pointer-events-none z-50">
+                  <Sparkles className="w-4 h-4 text-cyan-500" />
+                  <span className="text-white text-xs font-mono font-bold tracking-widest opacity-80">OmniNexa AI Trial</span>
+                </div>
+              )}
             </div>
 
             <div className="flex w-full flex-wrap items-center justify-between gap-4 p-4 rounded-xl bg-neutral-950/50 border border-neutral-900 font-mono text-xs">
@@ -367,6 +393,8 @@ export default function AIVideoView({
                 <span>{isRtl ? 'تحميل MP4' : 'Download Video'}</span>
               </button>
             </div>
+            
+            <InArticleAd />
           </div>
         )}
 

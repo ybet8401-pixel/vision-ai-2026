@@ -29,6 +29,7 @@ import PricingView from './components/PricingView';
 import AdminView from './components/AdminView';
 import HistoryView from './components/HistoryView';
 import AdBanner from './components/AdBanner';
+import MandatoryAdModal from './components/ads/MandatoryAdModal';
 import { UserProfile, Generation, AppSettings, Notification, Message } from './types';
 
 // Firebase core integration imports
@@ -147,16 +148,28 @@ export default function App() {
           const userSnap = await getDoc(userDocRef);
           if (userSnap.exists()) {
             freshProfile = userSnap.data() as UserProfile;
+            
+            // Revert premium status if expired
+            if (freshProfile.isPremium && freshProfile.premiumUntil) {
+              if (new Date(freshProfile.premiumUntil) < new Date()) {
+                freshProfile.isPremium = false;
+                freshProfile.tier = 'Free Trial';
+                // Fire and forget update
+                updateDoc(userDocRef, { isPremium: false, tier: 'Free Trial' }).catch(console.error);
+              }
+            }
           } else {
             freshProfile = {
               name: firebaseUser.displayName || 'Operator Alpha',
-              email: firebaseUser.email || 'operator@vision.ai',
-              tier: 'Quantum Pro',
+              email: firebaseUser.email || 'operator@omninexa.ai',
+              tier: 'Free Trial', // Default to free instead of Pro
               credits: 1000,
               maxCredits: 1000,
               avatar: firebaseUser.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
               joinedDate: new Date().toISOString().split('T')[0],
-              streakDays: 1
+              streakDays: 1,
+              isPremium: false,
+              usageStats: { appsGenerated: 0, imagesGenerated: 0, videosGenerated: 0, chatsSent: 0, adsWatched: 0 }
             };
             await setDoc(userDocRef, freshProfile);
           }
@@ -229,6 +242,152 @@ export default function App() {
       unsubMsgs();
     };
   }, []);
+
+  // --- PAYMENT CAPTURE (PAYPAL) ---
+  useEffect(() => {
+    const handlePaymentCapture = async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const payment = urlParams.get('payment');
+      const token = urlParams.get('token');
+
+      if (payment === 'success' && token && userId) {
+        // Clear params to prevent re-capturing
+        window.history.replaceState({}, document.title, window.location.pathname);
+        setAuthLoading(true); // show loader
+        
+        try {
+          // 1. Verify via Backend
+          const res = await fetch('/api/payments/capture', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token })
+          });
+          
+          if (!res.ok) throw new Error("Verification failed");
+          
+          const data = await res.json();
+          if (data.success) {
+            // 2. Grant Premium in Firestore
+            const premiumUntil = new Date();
+            premiumUntil.setDate(premiumUntil.getDate() + 7); // 7 days premium
+            
+            const userRef = doc(db, 'users', userId);
+            await updateDoc(userRef, {
+              isPremium: true,
+              premiumUntil: premiumUntil.toISOString(),
+              lastPaymentId: data.transactionId || 'simulated',
+              tier: 'Quantum Pro'
+            });
+
+            // Local Notification
+            setNotifications(prev => [{
+              id: Date.now().toString(),
+              type: 'info',
+              message: 'Payment Confirmed: Quantum Pro Activated! Enjoy unlimited generations without ads.',
+              time: new Date().toLocaleTimeString(),
+              read: false
+            }, ...prev]);
+            
+          }
+        } catch (err) {
+          console.error("Payment Capture Failed", err);
+          setNotifications(prev => [{
+            id: Date.now().toString(),
+            type: 'error',
+            message: 'Payment verification failed. If you were charged, please contact support.',
+            time: new Date().toLocaleTimeString(),
+            read: false
+          }, ...prev]);
+        } finally {
+          setAuthLoading(false);
+          setViewState('app');
+          setCurrentTab('dashboard');
+        }
+      } else if (payment === 'cancel') {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        setNotifications(prev => [{
+          id: Date.now().toString(),
+          type: 'error',
+          message: 'Payment was cancelled or interrupted.',
+          time: new Date().toLocaleTimeString(),
+          read: false
+        }, ...prev]);
+      }
+    };
+    
+    if (userId) { // Try capture only when auth is established
+        handlePaymentCapture();
+    }
+  }, [userId]);
+
+  // --- USAGE LIMITS & AD MODAL ---
+  const [showAdModal, setShowAdModal] = useState(false);
+  const [blockedFeature, setBlockedFeature] = useState<'apps'|'images'|'videos'>('apps');
+
+  const checkUsageLimit = async (featureType: 'apps'|'images'|'videos'): Promise<boolean> => {
+    if (!profile && userId !== 'sandbox_operator') return true;
+    
+    // Sandbox default bypass
+    if (userId === 'sandbox_operator') return true;
+
+    if (profile?.isPremium) {
+      if (profile.premiumUntil && new Date(profile.premiumUntil) > new Date()) {
+        return true; 
+      }
+    }
+
+    const stats = profile?.usageStats || { appsGenerated: 0, imagesGenerated: 0, videosGenerated: 0, chatsSent: 0, adsWatched: 0 };
+    
+    if (featureType === 'apps' && (stats.appsGenerated || 0) >= 4) {
+      setBlockedFeature('apps');
+      setShowAdModal(true);
+      return false;
+    }
+    if (featureType === 'images' && (stats.imagesGenerated || 0) >= 2) {
+      setBlockedFeature('images');
+      setShowAdModal(true);
+      return false;
+    }
+    if (featureType === 'videos' && (stats.videosGenerated || 0) >= 2) {
+      setBlockedFeature('videos');
+      setShowAdModal(true);
+      return false;
+    }
+
+    try {
+      if (userId && userId !== 'sandbox_operator') {
+         const userRef = doc(db, 'users', userId);
+         const updatedStats = { ...stats };
+         if (featureType === 'apps') updatedStats.appsGenerated = (updatedStats.appsGenerated || 0) + 1;
+         if (featureType === 'images') updatedStats.imagesGenerated = (updatedStats.imagesGenerated || 0) + 1;
+         if (featureType === 'videos') updatedStats.videosGenerated = (updatedStats.videosGenerated || 0) + 1;
+         await updateDoc(userRef, { usageStats: updatedStats });
+      }
+    } catch (e) {
+      console.error("Usage track err", e);
+    }
+    return true;
+  };
+
+  const handleAdComplete = async () => {
+    setShowAdModal(false);
+    // Reset the blocked limit so they can do N more uses
+    if (userId && userId !== 'sandbox_operator' && profile) {
+      try {
+        const userRef = doc(db, 'users', userId);
+        const stats = { ...(profile.usageStats || { appsGenerated: 0, imagesGenerated: 0, videosGenerated: 0, chatsSent: 0, adsWatched: 0 }) };
+        
+        if (blockedFeature === 'apps') stats.appsGenerated = 0;
+        if (blockedFeature === 'images') stats.imagesGenerated = 0;
+        if (blockedFeature === 'videos') stats.videosGenerated = 0;
+        stats.adsWatched = (stats.adsWatched || 0) + 1;
+
+        await updateDoc(userRef, { usageStats: stats });
+      } catch (e) {
+        console.error("Ad reset err", e);
+      }
+    }
+  };
 
   // Sync state mutation: Add a generation to state cleanly
   const addGeneration = async (gen: Omit<Generation, 'id' | 'date'>) => {
@@ -377,7 +536,7 @@ export default function App() {
     fetch('/api/health')
       .then(res => res.json())
       .then(data => {
-        console.log("Vision AI Grid operational:", data);
+        console.log("OmniNexa AI Grid operational:", data);
         if (data.mode === 'live') {
           setSettings(prev => ({ ...prev, apiMode: 'live' }));
         } else {
@@ -427,7 +586,7 @@ export default function App() {
                 <Sparkles className="w-6 h-6 text-white" />
               </div>
               <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white uppercase font-sans">
-                Vision <span className="text-cyan-400">AI</span> Console
+                OmniNexa <span className="text-cyan-400">AI</span> Console
               </h2>
               <p className="text-xs text-neutral-500">
                 {settings.language === 'ar' 
@@ -495,7 +654,7 @@ export default function App() {
                     type="email"
                     value={authEmail}
                     onChange={(e) => setAuthEmail(e.target.value)}
-                    placeholder="operator@vision.ai"
+                    placeholder="operator@omninexa.ai"
                     required
                     className="bg-transparent text-xs sm:text-sm text-white outline-none flex-1 placeholder-neutral-700"
                   />
@@ -606,6 +765,7 @@ export default function App() {
                   setMessages={updateMessages}
                   addGeneration={addGeneration}
                   language={settings.language}
+                  checkUsageLimit={() => checkUsageLimit('apps')}
                 />
               )}
 
@@ -613,6 +773,8 @@ export default function App() {
                 <AIImageView 
                   addGeneration={addGeneration}
                   language={settings.language}
+                  checkUsageLimit={() => checkUsageLimit('images')}
+                  isPremium={profile?.isPremium || false}
                 />
               )}
 
@@ -620,6 +782,8 @@ export default function App() {
                 <AIVideoView 
                   addGeneration={addGeneration}
                   language={settings.language}
+                  checkUsageLimit={() => checkUsageLimit('videos')}
+                  isPremium={profile?.isPremium || false}
                 />
               )}
 
@@ -634,6 +798,7 @@ export default function App() {
                 <AICodeView 
                   addGeneration={addGeneration}
                   language={settings.language}
+                  checkUsageLimit={() => checkUsageLimit('apps')}
                 />
               )}
 
@@ -641,6 +806,7 @@ export default function App() {
                 <AIWebsiteView 
                   addGeneration={addGeneration}
                   language={settings.language}
+                  checkUsageLimit={() => checkUsageLimit('apps')}
                 />
               )}
 
@@ -662,6 +828,7 @@ export default function App() {
               {currentTab === 'pricing' && (
                 <PricingView 
                   language={settings.language}
+                  userId={userId}
                 />
               )}
 
@@ -703,6 +870,17 @@ export default function App() {
         </div>
       )}
 
+      {/* Mandatory Ad Modal */}
+      <MandatoryAdModal 
+        isOpen={showAdModal}
+        featureType={blockedFeature}
+        onAdComplete={handleAdComplete}
+        onUpgradeClick={() => {
+          setShowAdModal(false);
+          setCurrentTab('pricing');
+        }}
+      />
+      
     </div>
   );
 }
