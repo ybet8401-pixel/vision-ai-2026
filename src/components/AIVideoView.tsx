@@ -17,6 +17,7 @@ import { Generation } from '../types';
 import AIVideoPlayer from './AIVideoPlayer';
 import RewardedAd from './ads/RewardedAd';
 import InArticleAd from './ads/InArticleAd';
+import LiveGenerationProgress from './LiveGenerationProgress';
 
 interface AIVideoViewProps {
   addGeneration: (gen: Omit<Generation, 'id' | 'date'>) => void;
@@ -286,7 +287,7 @@ export default function AIVideoView({
           )}
         </button>
 
-        <RewardedAd />
+        <RewardedAd isPremium={isPremium} />
       </div>
 
       {/* Presentation screen (3 cols) */}
@@ -394,7 +395,7 @@ export default function AIVideoView({
               </button>
             </div>
             
-            <InArticleAd />
+            <InArticleAd isPremium={isPremium} />
           </div>
         )}
 

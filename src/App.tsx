@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { 
   Sparkles, 
   Menu, 
@@ -15,21 +15,23 @@ import {
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import NotificationsPanel from './components/NotificationsPanel';
-import LandingPage from './components/LandingPage';
-import DashboardView from './components/DashboardView';
-import AIChatView from './components/AIChatView';
-import AIImageView from './components/AIImageView';
-import AIVideoView from './components/AIVideoView';
-import AIVoiceView from './components/AIVoiceView';
-import AICodeView from './components/AICodeView';
-import AIWebsiteView from './components/AIWebsiteView';
-import ProfileView from './components/ProfileView';
-import SettingsView from './components/SettingsView';
-import PricingView from './components/PricingView';
-import AdminView from './components/AdminView';
-import HistoryView from './components/HistoryView';
-import AdBanner from './components/AdBanner';
-import MandatoryAdModal from './components/ads/MandatoryAdModal';
+
+const LandingPage = lazy(() => import('./components/LandingPage'));
+const DashboardView = lazy(() => import('./components/DashboardView'));
+const MarketplaceView = lazy(() => import('./components/MarketplaceView'));
+const AIChatView = lazy(() => import('./components/AIChatView'));
+const AIImageView = lazy(() => import('./components/AIImageView'));
+const AIVideoView = lazy(() => import('./components/AIVideoView'));
+const AIVoiceView = lazy(() => import('./components/AIVoiceView'));
+const AICodeView = lazy(() => import('./components/AICodeView'));
+const AIWebsiteView = lazy(() => import('./components/AIWebsiteView'));
+const ProfileView = lazy(() => import('./components/ProfileView'));
+const SettingsView = lazy(() => import('./components/SettingsView'));
+const PricingView = lazy(() => import('./components/PricingView'));
+const AdminView = lazy(() => import('./components/AdminView'));
+const HistoryView = lazy(() => import('./components/HistoryView'));
+const AdBanner = lazy(() => import('./components/AdBanner'));
+const MandatoryAdModal = lazy(() => import('./components/ads/MandatoryAdModal'));
 import { UserProfile, Generation, AppSettings, Notification, Message } from './types';
 
 // Firebase core integration imports
@@ -260,26 +262,14 @@ export default function App() {
           const res = await fetch('/api/payments/capture', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token })
+            body: JSON.stringify({ token, userId })
           });
           
           if (!res.ok) throw new Error("Verification failed");
           
           const data = await res.json();
           if (data.success) {
-            // 2. Grant Premium in Firestore
-            const premiumUntil = new Date();
-            premiumUntil.setDate(premiumUntil.getDate() + 7); // 7 days premium
-            
-            const userRef = doc(db, 'users', userId);
-            await updateDoc(userRef, {
-              isPremium: true,
-              premiumUntil: premiumUntil.toISOString(),
-              lastPaymentId: data.transactionId || 'simulated',
-              tier: 'Quantum Pro'
-            });
-
-            // Local Notification
+            // Local Notification (Firestore snapshot will automatically update the profile data!)
             setNotifications(prev => [{
               id: Date.now().toString(),
               type: 'info',
@@ -330,8 +320,41 @@ export default function App() {
     // Sandbox default bypass
     if (userId === 'sandbox_operator') return true;
 
+    // Check Credits System first
+    const costMap = {
+      'apps': 10,
+      'images': 5,
+      'videos': 15
+    };
+    const cost = costMap[featureType];
+    
+    // Fallback to old behavior if no credit system yet, but we will deduct it
+    if (profile?.credits !== undefined && profile.credits < cost && !profile?.isPremium) {
+      setNotifications(prev => [{
+        id: Date.now().toString(),
+        type: 'error',
+        message: 'Insufficient credits! Please upgrade to Quantum Pro.',
+        time: new Date().toLocaleTimeString(),
+        read: false
+      }, ...prev]);
+      setCurrentTab('pricing');
+      return false;
+    }
+
     if (profile?.isPremium) {
       if (profile.premiumUntil && new Date(profile.premiumUntil) > new Date()) {
+        // Still track usage even if premium
+        try {
+          if (userId && userId !== 'sandbox_operator') {
+             const userRef = doc(db, 'users', userId);
+             const stats = profile?.usageStats || { appsGenerated: 0, imagesGenerated: 0, videosGenerated: 0, chatsSent: 0, adsWatched: 0 };
+             const updatedStats = { ...stats };
+             if (featureType === 'apps') updatedStats.appsGenerated = (updatedStats.appsGenerated || 0) + 1;
+             if (featureType === 'images') updatedStats.imagesGenerated = (updatedStats.imagesGenerated || 0) + 1;
+             if (featureType === 'videos') updatedStats.videosGenerated = (updatedStats.videosGenerated || 0) + 1;
+             await updateDoc(userRef, { usageStats: updatedStats });
+          }
+        } catch (e) {}
         return true; 
       }
     }
@@ -361,7 +384,22 @@ export default function App() {
          if (featureType === 'apps') updatedStats.appsGenerated = (updatedStats.appsGenerated || 0) + 1;
          if (featureType === 'images') updatedStats.imagesGenerated = (updatedStats.imagesGenerated || 0) + 1;
          if (featureType === 'videos') updatedStats.videosGenerated = (updatedStats.videosGenerated || 0) + 1;
-         await updateDoc(userRef, { usageStats: updatedStats });
+         
+         const newCredits = Math.max(0, (profile?.credits || 0) - cost);
+         
+         await updateDoc(userRef, { 
+           usageStats: updatedStats,
+           credits: newCredits
+         });
+
+         // Record transaction in history subcollection
+         const transRef = collection(db, 'users', userId, 'transactions');
+         await addDoc(transRef, {
+            type: 'deduction',
+            amount: cost,
+            feature: featureType,
+            date: new Date().toISOString()
+         });
       }
     } catch (e) {
       console.error("Usage track err", e);
@@ -749,7 +787,11 @@ export default function App() {
 
             {/* Viewport main slot */}
             <main className="flex-grow p-6 sm:p-8 max-w-7xl w-full mx-auto relative z-10">
-              
+              <Suspense fallback={
+                <div className="flex items-center justify-center p-20 animate-pulse">
+                  <Cpu className="w-10 h-10 text-cyan-500 animate-spin opacity-50" />
+                </div>
+              }>
               {currentTab === 'dashboard' && (
                 <DashboardView 
                   profile={profile}
@@ -757,6 +799,10 @@ export default function App() {
                   setCurrentTab={setCurrentTab}
                   language={settings.language}
                 />
+              )}
+
+              {currentTab === 'marketplace' && (
+                <MarketplaceView language={settings.language} userId={userId || undefined} />
               )}
 
               {currentTab === 'chat' && (
@@ -853,7 +899,7 @@ export default function App() {
                   isPremium={profile.tier === 'Quantum Pro' || profile.tier === 'Enterprise Cosmic'}
                 />
               </div>
-
+              </Suspense>
             </main>
 
             {/* Notifications Sidebar Slide panel overlay */}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { auth } from '../firebase';
 import { 
   Globe, 
   Sparkles, 
@@ -25,6 +26,7 @@ import {
 } from 'lucide-react';
 import { Generation } from '../types';
 import JSZip from 'jszip';
+import LiveGenerationProgress from './LiveGenerationProgress';
 
 interface AIWebsiteViewProps {
   addGeneration: (gen: Omit<Generation, 'id' | 'date'>) => void;
@@ -916,6 +918,41 @@ export default function AIWebsiteView({
     link.click();
   };
 
+  const handlePublishMarketplace = async () => {
+    if (!editableCode) return;
+    try {
+      const user = auth.currentUser;
+      const idToken = user ? await user.getIdToken() : '';
+      
+      const res = await fetch('/api/publish', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(idToken ? { 'Authorization': `Bearer ${idToken}` } : {})
+        },
+        body: JSON.stringify({
+          title: projectName,
+          description: projectDesc,
+          creatorId: user?.uid || 'user',
+          creatorName: user?.displayName || 'OmniNexa Pro Creator',
+          type: techType,
+          code: editableCode,
+          category: 'saas'
+        })
+      });
+      
+      const data = await res.json();
+      if (data.success) {
+        alert("Success! Published to OmniNexa Marketplace. Opening live preview...");
+        window.open(`${window.location.origin}${data.url}`, '_blank');
+      } else {
+        alert(data.error || "Failed to publish");
+      }
+    } catch(e) {
+      console.error("Publish err:", e);
+    }
+  };
+
   // REAL SYSTEM PROJECT SAVE ( حفظ المشاريع حقيقي 100% )
   const handleSaveProject = async () => {
     if (!editableCode) return;
@@ -1204,16 +1241,7 @@ export default function AIWebsiteView({
 
         {/* Running synthesis state */}
         {loading && (
-          <div className="flex flex-col items-center justify-center h-full text-center space-y-4 py-28 flex-1">
-            <Cpu className="w-12 h-12 text-cyan-400 animate-spin-slow" />
-            <div className="font-mono text-[11px] text-neutral-400 space-y-1">
-              <div className="text-cyan-400 font-bold uppercase tracking-wider animate-pulse">{isRtl ? 'جاري الاتصال بالعقد البرمجية' : '// COMPILING COGNITIVE BLUEPRINT'}</div>
-              <div>Consulting model failure fallback matrix...</div>
-              <div>Executing model sync loops...</div>
-              <div>Generating Tailwind config files...</div>
-              <div>Stitching HTML Canvas 2D frame listeners...</div>
-            </div>
-          </div>
+          <LiveGenerationProgress isRtl={isRtl} type="website" />
         )}
 
         {/* Code Builder Active Workspace Panel */}
@@ -1265,10 +1293,17 @@ export default function AIWebsiteView({
                 </button>
                 <button
                   onClick={handleDownloadHtml}
-                  className="px-2.5 py-1.5 bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 text-white rounded-lg transition text-[10px] font-bold uppercase flex items-center gap-1 cursor-pointer"
+                  className="px-2.5 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-850 rounded-lg transition text-[10px] font-bold uppercase flex items-center gap-1 cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Download HTML</span>
+                </button>
+                <button
+                  onClick={handlePublishMarketplace}
+                  className="px-2.5 py-1.5 bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white shadow-lg rounded-lg transition text-[10px] font-bold uppercase flex items-center gap-1 cursor-pointer"
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>Deploy & Publish</span>
                 </button>
               </div>
             </div>

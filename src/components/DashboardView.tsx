@@ -136,7 +136,7 @@ export default function DashboardView({
         })}
       </div>
 
-      <DashboardAd />
+      <DashboardAd isPremium={profile.isPremium} />
 
       {/* Two Columns Dashboard Content */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">

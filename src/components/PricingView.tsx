@@ -53,7 +53,7 @@ export default function PricingView({
     },
     {
       title: isRtl ? 'محترفي الكوانتم' : 'Quantum Pro',
-      price: '$70',
+      price: '€70',
       period: isRtl ? '/ أسبوع (7 أيام)' : '/ 7 Days',
       desc: isRtl ? 'حساب متكامل للاجتهاد والتطوير بلا حدود' : 'Maximum reasoning thresholds with elite speed & no ads',
       features: isRtl 

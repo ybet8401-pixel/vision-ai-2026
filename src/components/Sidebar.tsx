@@ -16,7 +16,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Zap,
-  Cpu
+  Cpu,
+  Store
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -42,6 +43,7 @@ export default function Sidebar({
 
   const menuItems = [
     { id: 'dashboard', label: isRtl ? 'لوحة التحكم' : 'Dashboard', icon: LayoutDashboard, group: 'main' },
+    { id: 'marketplace', label: isRtl ? 'إكتشف المنصة' : 'Marketplace', icon: Store, group: 'main' },
     { id: 'chat', label: isRtl ? 'المحادثة الذكية' : 'AI Chat', icon: MessageSquare, group: 'tools' },
     { id: 'images', label: isRtl ? 'توليد الصور' : 'AI Image', icon: ImageIcon, group: 'tools' },
     { id: 'video', label: isRtl ? 'توليد الفيديو' : 'AI Video', icon: Video, group: 'tools' },

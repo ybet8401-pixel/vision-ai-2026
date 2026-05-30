@@ -18,6 +18,7 @@ import { Generation } from '../types';
 import SidebarAd from './ads/SidebarAd';
 import RewardedAd from './ads/RewardedAd';
 import InArticleAd from './ads/InArticleAd';
+import LiveGenerationProgress from './LiveGenerationProgress';
 
 interface AIImageViewProps {
   addGeneration: (gen: Omit<Generation, 'id' | 'date'>) => void;
@@ -394,7 +395,7 @@ export default function AIImageView({
           )}
         </button>
 
-        <RewardedAd />
+        <RewardedAd isPremium={isPremium} />
       </div>
 
       {/* Visual Render Canvas Area (3 columns) */}
@@ -425,31 +426,7 @@ export default function AIImageView({
 
         {/* 2. Generation Progress Loading state with steps telemetry */}
         {loading && (
-          <div className="flex flex-col items-center justify-center h-full text-center space-y-6 py-20">
-            <div className="relative flex items-center justify-center">
-              <div className="w-12 h-12 rounded-full border border-cyan-500/20 border-t-cyan-400 border-r-purple-500 animate-spin"></div>
-              <Cpu className="w-4.5 h-4.5 text-cyan-400 absolute animate-pulse" />
-            </div>
-            
-            <div className="space-y-3 font-mono text-xs text-neutral-400 max-w-sm">
-              <div className="text-cyan-400 font-bold uppercase tracking-widest animate-pulse flex items-center justify-center gap-1.5">
-                <span>{isRtl ? '// التوليف العصبي نشط حالياً' : '// CORE SYNTHESIS ACTIVE'}</span>
-              </div>
-              
-              {/* Dynamic live simulation step messages */}
-              <div className="bg-neutral-950/80 border border-neutral-900 rounded-xl px-4 py-3 text-[11px] text-neutral-300 min-h-[50px] flex items-center justify-center leading-relaxed">
-                {stepMessages[generationStep]}
-              </div>
-
-              {/* Progress visual bar */}
-              <div className="w-40 h-1 bg-neutral-900 rounded-full mx-auto overflow-hidden">
-                <div 
-                  className="h-full bg-gradient-to-r from-cyan-400 to-purple-500 transition-all duration-700 ease-out"
-                  style={{ width: `${(generationStep + 1) * 20}%` }}
-                ></div>
-              </div>
-            </div>
-          </div>
+          <LiveGenerationProgress isRtl={isRtl} type="image" />
         )}
 
         {/* 3. High Fidelity Generated Image output viewport */}
@@ -509,7 +486,7 @@ export default function AIImageView({
 
             </div>
 
-            <InArticleAd />
+            <InArticleAd isPremium={isPremium} />
           </div>
         )}
 
