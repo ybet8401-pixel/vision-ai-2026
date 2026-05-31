@@ -1,10 +1,14 @@
 import express from "express";
 import path from "path";
 import fs from "fs/promises";
+import fsSync from "fs";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import AdmZip from "adm-zip";
 import { GoogleGenAI } from "@google/genai";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import cors from "cors";
 import * as admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
 
@@ -13,9 +17,9 @@ dotenv.config();
 
 // Auto-Initialize Firebase Admin
 try {
-  if (!admin.apps.length) {
+  if (!admin.getApps().length) {
     const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
-    const firebaseConfigRaw = require('fs').readFileSync(firebaseConfigPath, 'utf-8');
+    const firebaseConfigRaw = fsSync.readFileSync(firebaseConfigPath, 'utf-8');
     const firebaseConfig = JSON.parse(firebaseConfigRaw);
     
     admin.initializeApp({
@@ -30,15 +34,15 @@ try {
 function getBackendDb() {
   try {
     const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
-    const firebaseConfigRaw = require('fs').readFileSync(firebaseConfigPath, 'utf-8');
+    const firebaseConfigRaw = fsSync.readFileSync(firebaseConfigPath, 'utf-8');
     const firebaseConfig = JSON.parse(firebaseConfigRaw);
     return getFirestore(admin.app(), firebaseConfig.firestoreDatabaseId || "(default)");
   } catch(e) {
-    return getFirestore(); // fallback
+    return getFirestore();
   }
 }
 
-const PORT = 3000;
+const PORT = 5000;
 const DB_PATH = path.join(process.cwd(), "db.json");
 
 // Helper to interact with db.json securely
@@ -327,9 +331,6 @@ async function startServer() {
   const app = express();
   
   // --- CORE SECURITY ---
-  const helmet = require('helmet');
-  const rateLimit = require('express-rate-limit');
-  const cors = require('cors');
 
   // Basic security headers, excluding some strict CSP policies to allow Vite and dynamic iframe code execution
   app.use(helmet({
