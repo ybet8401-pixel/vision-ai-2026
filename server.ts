@@ -360,6 +360,16 @@ async function startServer() {
 
   app.use(express.json({ limit: '100mb' }));
   app.use(express.urlencoded({ limit: '100mb', extended: true }));
+  // Force JSON response on JSON payload parsing errors (like syntax errors or payload limits)
+  app.use((err: any, req: any, res: any, next: any) => {
+    if (err instanceof SyntaxError && 'body' in err) {
+      return res.status(400).json({ error: "Invalid JSON format in payload." });
+    }
+    if (err.type === 'entity.too.large') {
+      return res.status(413).json({ error: "Payload too large. Please upload a smaller image (max 100MB)." });
+    }
+    next();
+  });
 
   // HEALTH MONITOR
   app.get("/api/health", (req, res) => {
@@ -515,7 +525,7 @@ async function startServer() {
 
   // WEBPAGE AND GAMES COMPILER API
   app.post("/api/ai/website", async (req, res) => {
-    const { prompt, tech = "HTML/Tailwind" } = req.body;
+    const { prompt, tech = "HTML/Tailwind", currentCode } = req.body;
     if (!prompt) {
       return res.status(400).json({ error: "Concept instruction prompt is required." });
     }
@@ -525,7 +535,9 @@ async function startServer() {
     
     // STEP 1: SMART PLANNING & INTENT ANALYSIS
     console.log(`[AI PLANNER] Analyzing prompt: ${prompt.slice(0, 30)}...`);
-    const planningPrompt = `You are a Principal Software Architect. Your job is to analyze the following user requirement and create a structured, step-by-step master plan to build it as a single-file highly interactive HTML/JS/CSS application.
+    const planningPrompt = currentCode ? `You are a Principal Software Architect. The user asks to modify an existing application.
+    Requirement: "${prompt}"
+    Analyze the user's intent and describe logically what needs to be changed, added, or fixed in the codebase.` : `You are a Principal Software Architect. Your job is to analyze the following user requirement and create a structured, step-by-step master plan to build it as a single-file highly interactive HTML/JS/CSS application.
     Extract the true intent, target audience, core mechanics, required state variables, and visual design language.
     Requirement: "${prompt}"
     Technology: "${tech}"
@@ -534,7 +546,7 @@ async function startServer() {
     let structuralPlan = "";
     try {
       const planResult = await generateTextResilient(
-        [...globalProjectMemory, { role: "user", content: planningPrompt }],
+        [{ role: "user", content: planningPrompt }],
         "Groq", // Using Reasoning Model for deeper analysis
         false,
         "You are an elite Software Planner and AI Architect. Focus on deep understanding, UI/UX structure, and exact logic steps.",
@@ -561,10 +573,25 @@ async function startServer() {
        - Audio & Visuals: Generate authentic retro spatial sounds using Web Audio API dynamically. Add particle effects and smooth animations.
        - Game State: Always include Score System, Health/Lives, Game Over states, and a Restart button.
     5. MULTILINGUAL & RTL COMPATIBILITY: If the user provides an Arabic prompt, compile the app using right-to-left layout directioning (dir="rtl") with elegant fonts.
+    6. ITERATION MODE: If existing code is provided, apply the requested changes accurately while retaining all existing functionality that should not change. Do not just truncate unaltered code, output the full file.
     
-    IMPORTANT: Provide only the raw, complete, functional HTML code (with embedded full JS/CSS) inside an HTML code block. The file MUST have all HTML, CSS, and JS integrated in one file. Do not add chat preamble, explanations, wrappers or markdown fences. Raise the bar to compete with the top worldwide SaaS portals.`;
+    IMPORTANT: Provide only the raw, complete, functional HTML code (with embedded full JS/CSS) inside an HTML code block (\`\`\`html ... \`\`\`). The file MUST have all HTML, CSS, and JS integrated in one file. Do not add chat preamble, explanations, wrappers or markdown fences. Raise the bar to compete with the top worldwide SaaS portals.`;
 
-    const finalPrompt = `Build a highly interactive, complete and production-ready ${tech} application matching this user request:
+    const finalPrompt = currentCode ? `Modify the following existing codebase to fulfill the user request.
+    
+    USER REQUEST (MODIFICATION): "${prompt}"
+    
+    Use the following architectural Master Plan to guide your changes:
+    === MASTER PLAN ===
+    ${structuralPlan}
+    ===================
+    
+    EXISTING CODEBASE:
+    \`\`\`html
+    ${currentCode}
+    \`\`\`
+    
+    Remember: Return ONLY the raw HTML code inside an HTML code block, ready to run. Do NOT skip or truncate unchanged parts.` : `Build a highly interactive, complete and production-ready ${tech} application matching this user request:
     USER REQUEST: "${prompt}"
     
     Use the following architectural Master Plan to guide your implementation:
@@ -574,46 +601,52 @@ async function startServer() {
     
     Remember: Return ONLY the raw HTML code inside an HTML code block, ready to run.`;
 
-    const result = await generateTextResilient(
-      [{ role: "user", content: finalPrompt }],
-      "Auto",
-      false,
-      compilationSystemInstruction,
-      targetAgentMode
-    );
+    let cleanCode = "";
+    let providerUsed = "";
+    let attempts = 0;
+    let isValid = false;
+    let fallbackPrompt = finalPrompt;
 
-    let cleanCode = result.response.trim();
-    // Use regex to extract everything between ```html and ``` if present
-    const htmlMatch = cleanCode.match(/```html([\s\S]*?)```/);
-    if (htmlMatch) {
-      cleanCode = htmlMatch[1].trim();
-    } else {
-      // Just fallback to cleaning the start
-      if (cleanCode.startsWith("```html")) {
-        cleanCode = cleanCode.substring(7);
+    while (attempts < 2 && !isValid) {
+      attempts++;
+      const result = await generateTextResilient(
+        [{ role: "user", content: fallbackPrompt }],
+        "Auto",
+        false,
+        compilationSystemInstruction,
+        targetAgentMode
+      );
+      
+      cleanCode = result.response.trim();
+      providerUsed = result.provider;
+
+      const htmlMatch = cleanCode.match(/```html([\s\S]*?)```/);
+      if (htmlMatch) {
+        cleanCode = htmlMatch[1].trim();
+      } else {
+        if (cleanCode.startsWith("```html")) cleanCode = cleanCode.substring(7);
+        if (cleanCode.endsWith("```")) cleanCode = cleanCode.substring(0, cleanCode.length - 3);
+        if (cleanCode.includes("---\n\n**Support Pollinations.AI")) {
+          cleanCode = cleanCode.split("---\n\n**Support Pollinations.AI")[0];
+        }
+        cleanCode = cleanCode.trim();
       }
-      if (cleanCode.endsWith("```")) {
-        cleanCode = cleanCode.substring(0, cleanCode.length - 3);
+
+      // Quality Validation Step
+      const hasTailwind = cleanCode.includes("tailwind");
+      const hasHtmlTags = cleanCode.includes("</html>");
+      
+      if (cleanCode.length > 500 && hasTailwind && hasHtmlTags) {
+        isValid = true;
+      } else {
+        console.warn(`[AI VALIDATOR] Generated code quality below threshold. Missing core tags. Attempt ${attempts} failed.`);
+        fallbackPrompt = finalPrompt + `\n\nCRITICAL FEEDBACK ON LAST ATTEMPT: Your previous output was missing closing </html> tags or Tailwind import. You MUST output a fully complete, self-contained HTML file without truncation. Try again.`;
       }
-      // Remove any Pollinations ad text appended at the end
-      if (cleanCode.includes("---\n\n**Support Pollinations.AI")) {
-        cleanCode = cleanCode.split("---\n\n**Support Pollinations.AI")[0];
-      }
-      cleanCode = cleanCode.trim();
     }
     
-    // Save to Project Context Memory
-    globalProjectMemory.push({ role: "user", content: prompt });
-    globalProjectMemory.push({ role: "assistant", content: cleanCode.substring(0, 500) + "...[TRUNCATED_CODE]" });
-    
-    // Enforce 5 interaction limit (10 items: 5 users, 5 assistants)
-    if (globalProjectMemory.length > 10) {
-      globalProjectMemory.splice(0, globalProjectMemory.length - 10);
-    }
-
     res.json({
       code: cleanCode,
-      modelUsed: result.provider,
+      modelUsed: providerUsed,
       success: true
     });
   });
@@ -641,12 +674,28 @@ async function startServer() {
     // 1. ADVANCED IMAGE PROMPTING SYSTEM
     try {
       console.log(`[AI PLANNER] Engaging Advanced Image Prompting (Reasoning) for: "${prompt.slice(0, 30)}..."`);
-      // We explicitly override user description to automatically enhance it
+      
+      const systemInstruction = `You are a Principal AI Image Prompt Architect.
+Your task is to analyze the user's intent and formulate an optimized, highly detailed image generation prompt.
+Analyze the following elements:
+- Subject
+- Environment
+- Style
+- Lighting
+- Colors
+- Mood
+- Composition
+- Camera Angle
+- Image Quality Requirements
+
+Automatically create a masterpiece Midjourney/FLUX prompt integrating all these elements to achieve ultra-realistic, highly accurate, and premium results.
+Do not output any introductory or conversational text, only return the final optimized prompt string in English.`;
+
       const enhancementResponse = await generateTextResilient(
         [{ role: "user", content: prompt }], 
         "Groq", 
         false, 
-        "You are an Elite Image Prompt Architect. Your job is to take the user's base concept and expand it into a MASTERPIECE Midjourney/FLUX prompt. Add specific artistic styles, cinematic lighting (e.g., 'volumetric lighting', 'golden hour'), dramatic camera angles (e.g., 'low angle wide shot', 'macro photography'), and rich texturing. Keep the response to just the prompt itself. Do not include conversational text or wrappers. Translate to English if needed.",
+        systemInstruction,
         "reasoning"
       );
       if (enhancementResponse?.response) {
@@ -968,7 +1017,7 @@ async function startServer() {
                 const repRes = await fetchWithRetry("https://router.huggingface.co/hf-inference/models/stabilityai/stable-video-diffusion-img2vid-xt", {
                   method: "POST",
                   headers: { "Authorization": `Bearer ${hfToken}`, "Content-Type": "application/json" },
-                  body: JSON.stringify({ inputs: { image: base64Image } }) // Note: HF format for SVD varies, this is a fallback construct
+                  body: JSON.stringify({ inputs: base64Image }) 
                 });
                 if (repRes.ok) {
                    const buffer = Buffer.from(await repRes.arrayBuffer());
@@ -976,9 +1025,12 @@ async function startServer() {
                    selectedVideo = `data:video/mp4;base64,${base64}`;
                    videoSource = `Hugging Face SVD`;
                    job.logs.push(`[SUCCESS] HF SVD API returned video successfully.`);
+                } else {
+                   const err = await repRes.text();
+                   job.logs.push(`[WARN] HF SVD returned status ${repRes.status}: ${err.substring(0,100)}`);
                 }
-             } catch(e) {
-                job.logs.push(`[WARN] HF SVD request failed.`);
+             } catch(e: any) {
+                job.logs.push(`[WARN] HF SVD request exception: ${e.message}`);
              }
         }
 
@@ -986,7 +1038,9 @@ async function startServer() {
         
         if (!selectedVideo) {
            job.status = 'failed';
-           job.error = "All configured providers failed to generate the video. Please check API quotas or logs.";
+           const lastError = job.logs.reverse().find(l => l.includes('[WARN]') || l.includes('[FATAL]'));
+           const exactCause = lastError ? lastError.replace(/\[(?:WARN|FATAL)\]\s*/, '') : "Quotas exceeded or provider unavailable.";
+           job.error = exactCause;
         } else {
            job.status = 'completed';
            job.videoUrl = selectedVideo;
@@ -1165,7 +1219,20 @@ async function startServer() {
         },
         body: "grant_type=client_credentials"
       });
-      const tokenData = await tokenRes.json();
+      
+      const tokenText = await tokenRes.text();
+      let tokenData;
+      try {
+        tokenData = JSON.parse(tokenText);
+      } catch (e) {
+        return res.status(500).json({ error: "Invalid response from PayPal Token API" });
+      }
+
+      if (!tokenRes.ok || !tokenData.access_token) {
+         console.error("PayPal Auth failed:", tokenData);
+         return res.status(500).json({ error: "PayPal authentication failed." });
+      }
+      
       const accessToken = tokenData.access_token;
 
       // 2. Create Order
@@ -1194,13 +1261,25 @@ async function startServer() {
         })
       });
       
-      const orderData = await orderRes.json();
+      const orderText = await orderRes.text();
+      let orderData;
+      try {
+        orderData = JSON.parse(orderText);
+      } catch (e) {
+        return res.status(500).json({ error: "Invalid response from PayPal Order API" });
+      }
+
+      if (!orderRes.ok || !orderData.links) {
+          console.error("PayPal Order creation failed:", orderData);
+          return res.status(500).json({ error: orderData.message || "Failed to create PayPal order." });
+      }
+      
       const approveLink = orderData.links?.find((link: any) => link.rel === "approve")?.href;
       
       if (approveLink) {
         res.json({ url: approveLink, id: orderData.id });
       } else {
-        res.status(500).json({ error: "Failed to create PayPal order." });
+        res.status(500).json({ error: "No approve link found in PayPal order." });
       }
     } catch (err: any) {
       console.error("PayPal Error:", err);
@@ -1291,7 +1370,53 @@ async function startServer() {
   });
 
   // --- MARKETPLACE & DEPLOYMENT SYSTEM ---
-  // Public Endpoint to serve deployed pure HTML projects
+  
+  app.get("/api/publish/my-projects", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      const token = authHeader.split(" ")[1];
+      const verifiedUser = await admin.auth().verifyIdToken(token);
+      
+      const dbRef = getBackendDb();
+      const snapshot = await dbRef.collection('marketplace')
+        .where('creatorId', '==', verifiedUser.uid)
+        .orderBy('createdAt', 'desc')
+        .get();
+        
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      res.json({ projects: docs });
+    } catch(e) {
+       console.error(e);
+       res.status(500).json({ error: "Failed to fetch projects." });
+    }
+  });
+
+  app.delete("/api/publish/:id", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      const token = authHeader.split(" ")[1];
+      const verifiedUser = await admin.auth().verifyIdToken(token);
+      
+      const dbRef = getBackendDb();
+      const docRef = dbRef.collection('marketplace').doc(req.params.id);
+      const snapshot = await docRef.get();
+      if (!snapshot.exists || snapshot.data()?.creatorId !== verifiedUser.uid) {
+         return res.status(403).json({ error: "Forbidden" });
+      }
+      await docRef.delete();
+      res.json({ success: true });
+    } catch(e) {
+       res.status(500).json({ error: "Failed to delete project." });
+    }
+  });
+
+  // Public Endpoint to serve deployed projects
   app.get("/deploy/:id", async (req, res) => {
     try {
       const dbRef = getBackendDb();
@@ -1308,7 +1433,15 @@ async function startServer() {
       }).catch(()=>null);
       
       res.setHeader('Content-Type', 'text/html');
-      res.send(data?.code || "<h1>No Content</h1>");
+      
+      if (data?.type === 'video') {
+         res.send(`<!DOCTYPE html><html><head><title>${data.title || 'Video'}</title><style>body{margin:0;background:#000;display:flex;justify-content:center;align-items:center;height:100vh;color:#fff;font-family:sans-serif;}video{max-width:100%;max-height:100%;}</style></head><body><video controls autoplay loop src="${data.code}"></video></body></html>`);
+      } else if (data?.type === 'image') {
+         res.send(`<!DOCTYPE html><html><head><title>${data.title || 'Image'}</title><style>body{margin:0;background:#000;display:flex;justify-content:center;align-items:center;height:100vh;}img{max-width:100%;max-height:100vh;object-fit:contain;}</style></head><body><img src="${data.code}" alt="${data.title}" /></body></html>`);
+      } else {
+         // App, Website, Games standard raw HTML injection
+         res.send(data?.code || "<h1>No Content</h1>");
+      }
     } catch (e) {
       console.error("Deploy error:", e);
       res.status(500).send("<h1>Server Error</h1>");

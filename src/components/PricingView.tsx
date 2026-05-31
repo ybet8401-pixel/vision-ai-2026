@@ -26,14 +26,19 @@ export default function PricingView({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ plan, userId })
       });
-      const data = await res.json();
+      let data;
+      try {
+        data = await res.json();
+      } catch (e) {
+        throw new Error('Server returned an invalid response.');
+      }
       if (data.url) {
         window.location.href = data.url;
       } else {
         alert(data.error || 'Payment initialization failed');
       }
-    } catch (e) {
-      alert('Network error connecting to payment gateway.');
+    } catch (e: any) {
+      alert(`Network error connecting to payment gateway: ${e.message || ''}`);
     }
     setLoading(false);
   };

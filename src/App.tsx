@@ -273,6 +273,7 @@ export default function App() {
             setNotifications(prev => [{
               id: Date.now().toString(),
               type: 'info',
+              title: 'Pro Activated',
               message: 'Payment Confirmed: Quantum Pro Activated! Enjoy unlimited generations without ads.',
               time: new Date().toLocaleTimeString(),
               read: false
@@ -283,7 +284,8 @@ export default function App() {
           console.error("Payment Capture Failed", err);
           setNotifications(prev => [{
             id: Date.now().toString(),
-            type: 'error',
+            type: 'warning',
+            title: 'Payment Failed',
             message: 'Payment verification failed. If you were charged, please contact support.',
             time: new Date().toLocaleTimeString(),
             read: false
@@ -297,7 +299,8 @@ export default function App() {
         window.history.replaceState({}, document.title, window.location.pathname);
         setNotifications(prev => [{
           id: Date.now().toString(),
-          type: 'error',
+          type: 'warning',
+          title: 'Payment Cancelled',
           message: 'Payment was cancelled or interrupted.',
           time: new Date().toLocaleTimeString(),
           read: false
@@ -332,7 +335,8 @@ export default function App() {
     if (profile?.credits !== undefined && profile.credits < cost && !profile?.isPremium) {
       setNotifications(prev => [{
         id: Date.now().toString(),
-        type: 'error',
+        type: 'warning',
+        title: 'Out of Credits',
         message: 'Insufficient credits! Please upgrade to Quantum Pro.',
         time: new Date().toLocaleTimeString(),
         read: false
@@ -473,8 +477,13 @@ export default function App() {
     try {
       setAuthLoading(true);
       await signInWithPopup(auth, googleProvider);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Google Authenticator Handshake Failed:", err);
+      if (err.code === 'auth/popup-closed-by-user') {
+         alert("Login cancelled. Please try again.");
+      } else {
+         alert(`Login failed: ${err.message || 'If you are viewing in a preview frame, please open the app in a new tab.'}`);
+      }
     } finally {
       setAuthLoading(false);
     }

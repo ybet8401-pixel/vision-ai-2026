@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { Message, Generation } from '../types';
 import AdBanner from './AdBanner';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface AIChatViewProps {
   messages: Message[];
@@ -271,7 +273,15 @@ export default function AIChatView({
                   </div>
                 )}
 
-                <p className="text-xs sm:text-sm whitespace-pre-wrap leading-relaxed font-sans">{m.content}</p>
+                {m.role === 'user' ? (
+                  <p className="text-xs sm:text-sm whitespace-pre-wrap leading-relaxed font-sans">{m.content}</p>
+                ) : (
+                  <div className="prose prose-invert prose-sm max-w-none prose-pre:bg-neutral-900 prose-pre:border prose-pre:border-neutral-800 prose-pre:rounded-xl">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {m.content}
+                    </ReactMarkdown>
+                  </div>
+                )}
 
                 {/* Grounding Search Sources */}
                 {m.role !== 'user' && m.sources && m.sources.length > 0 && (

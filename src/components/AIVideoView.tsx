@@ -11,7 +11,8 @@ import {
   Upload,
   Image as ImageIcon,
   Activity,
-  CheckCircle2
+  CheckCircle2,
+  Globe
 } from 'lucide-react';
 import { Generation } from '../types';
 import AIVideoPlayer from './AIVideoPlayer';
@@ -95,7 +96,12 @@ export default function AIVideoView({
         const res = await fetch(`/api/ai/video/status/${jobId}`);
         if (!res.ok) throw new Error("Job tracking failed");
         
-        const data = await res.json();
+        let data;
+        try {
+          data = await res.json();
+        } catch (e) {
+          throw new Error("Invalid response during status poll");
+        }
         if (data.logs) setLogs(data.logs);
         
         // Update active step based on progress for visual feedback
@@ -157,9 +163,15 @@ export default function AIVideoView({
         })
       });
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        throw new Error("Server returned non-JSON response. Please try again.");
+      }
+      
       if (!response.ok) {
-        throw new Error(data.error || "Generation submission failed");
+        throw new Error(data?.error || "Generation submission failed");
       }
       
       setJobId(data.jobId);
@@ -177,6 +189,49 @@ export default function AIVideoView({
     link.download = `motion_ai_${Date.now()}.mp4`;
     link.target = "_blank";
     link.click();
+  };
+
+  const handlePublish = async () => {
+    if (!videoUrl) return;
+    try {
+      const { auth } = await import('../firebase');
+      const user = auth.currentUser;
+      const idToken = user ? await user.getIdToken() : '';
+      
+      const payload = {
+          title: prompt.slice(0, 30) + '...',
+          description: styleDesc || "Cinematic video generation",
+          creatorId: user?.uid || 'user',
+          creatorName: user?.displayName || 'OmniNexa Pro Creator',
+          type: 'video',
+          code: videoUrl, // Use code field to store base64 or URL
+          category: 'video'
+      };
+      
+      const res = await fetch('/api/publish', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(idToken ? { 'Authorization': `Bearer ${idToken}` } : {})
+        },
+        body: JSON.stringify(payload)
+      });
+      
+      let data;
+      try { data = await res.json(); } catch(e) { throw new Error("Invalid publish response"); }
+      
+      if (data.success) {
+        alert("Success! Published to OmniNexa Marketplace. Opening live preview...");
+        // For video, we should just link to a video viewer page or open it directly
+        // The /deploy/:id endpoint serves HTML. Let's make it handle non-HTML if needed, 
+        // or wrap the video in HTML. Wait, /api/publish just saves it. Let's redirect to deploy
+        window.open(`${window.location.origin}${data.url}`, '_blank');
+      } else {
+        alert(data.error || "Publish failed");
+      }
+    } catch(e: any) {
+      alert("Failed to publish: " + (e.message || ""));
+    }
   };
 
   return (
@@ -386,13 +441,22 @@ export default function AIVideoView({
             <div className="flex w-full flex-wrap items-center justify-between gap-4 p-4 rounded-xl bg-neutral-950/50 border border-neutral-900 font-mono text-xs">
               <span className="text-neutral-500 uppercase">HD Motion Stream Completed</span>
               
-              <button 
-                onClick={handleDownload}
-                className="px-4 py-2 text-xs font-bold bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white rounded-xl transition flex items-center gap-1.5 shadow-md shadow-indigo-500/15 cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>{isRtl ? 'تحميل MP4' : 'Download Video'}</span>
-              </button>
+              <div className="flex gap-2">
+                <button 
+                  onClick={handleDownload}
+                  className="px-4 py-2 text-xs font-bold bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{isRtl ? 'تحميل MP4' : 'Download Video'}</span>
+                </button>
+                <button 
+                  onClick={handlePublish}
+                  className="px-4 py-2 text-xs font-bold bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white rounded-xl transition flex items-center gap-1.5 shadow-md shadow-indigo-500/15 cursor-pointer"
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>{isRtl ? 'نشر للعامة' : 'Publish'}</span>
+                </button>
+              </div>
             </div>
             
             <InArticleAd isPremium={isPremium} />

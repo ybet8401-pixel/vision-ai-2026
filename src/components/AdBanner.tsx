@@ -28,7 +28,11 @@ export default function AdBanner({
   
   // Lazy load intersection observer
   useEffect(() => {
-    if (isPremium || hasFailed) return;
+    // Disable AdSense inside iframes (e.g. AI Studio preview) to prevent framebusting/blank pages
+    if (isPremium || hasFailed || window.self !== window.top) {
+       setHasFailed(true);
+       return;
+    }
 
     const observer = new IntersectionObserver(
       (entries) => {

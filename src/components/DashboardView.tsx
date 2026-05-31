@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { 
   Sparkles, 
   TrendingUp, 
@@ -9,11 +10,15 @@ import {
   ArrowUpRight,
   Zap,
   CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  Trash2,
+  ExternalLink,
+  Code2
 } from 'lucide-react';
 import { UserProfile, Generation } from '../types';
 import AdBanner from './AdBanner';
 import DashboardAd from './ads/DashboardAd';
+import { auth } from '../firebase';
 
 interface DashboardViewProps {
   profile: UserProfile;
@@ -29,6 +34,54 @@ export default function DashboardView({
   language
 }: DashboardViewProps) {
   const isRtl = language === 'ar';
+  const [myProjects, setMyProjects] = useState<any[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+
+  const fetchMyProjects = async () => {
+    try {
+      setLoadingProjects(true);
+      const user = auth.currentUser;
+      if (!user) return;
+      const token = await user.getIdToken();
+      const res = await fetch('/api/publish/my-projects', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.projects) setMyProjects(data.projects);
+    } catch(e) {
+      console.error(e);
+    } finally {
+      setLoadingProjects(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMyProjects();
+  }, []);
+
+  const handleDeleteProject = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this project? It will be removed from the Marketplace immediately.")) return;
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
+      const token = await user.getIdToken();
+      const res = await fetch(`/api/publish/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setMyProjects(prev => prev.filter(p => p.id !== id));
+      } else {
+        alert("Delete failed.");
+      }
+    } catch(e) {
+      alert("Error deleting project.");
+    }
+  };
+
+  const openProject = (id: string) => {
+     window.open(`${window.location.origin}/deploy/${id}`, '_blank');
+  };
 
   const stats = profile.usageStats || { appsGenerated: 0, imagesGenerated: 0, videosGenerated: 0, chatsSent: 0, adsWatched: 0 };
   const getPremiumStatusText = () => {
@@ -235,6 +288,72 @@ export default function DashboardView({
         </div>
 
       </div>
+
+      {/* MY PROJECTS SECTION */}
+      <div className="p-6 sm:p-8 rounded-2xl bg-neutral-900/20 border border-neutral-800 space-y-6">
+        <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <Code2 className="w-5 h-5 text-indigo-400" />
+              {isRtl ? 'مشاريعي المنشورة' : 'My Published Projects'}
+            </h3>
+            <button 
+                onClick={fetchMyProjects}
+                disabled={loadingProjects}
+                className="p-2 rounded-lg bg-neutral-900/50 hover:bg-neutral-800 border border-neutral-800 disabled:opacity-50 transition"
+            >
+                <RefreshCw className={`w-4 h-4 text-neutral-400 ${loadingProjects ? 'animate-spin' : ''}`} />
+            </button>
+        </div>
+
+        {loadingProjects && myProjects.length === 0 ? (
+           <div className="flex justify-center p-8"><Cpu className="w-8 h-8 text-indigo-500 animate-spin" /></div>
+        ) : myProjects.length > 0 ? (
+           <div className="overflow-x-auto">
+             <table className="w-full text-left text-sm text-neutral-300 whitespace-nowrap">
+                <thead className="bg-neutral-900/60 text-neutral-400 text-xs uppercase font-mono tracking-wider">
+                   <tr>
+                      <th className="px-4 py-3">{isRtl ? 'المشروع' : 'Project'}</th>
+                      <th className="px-4 py-3">{isRtl ? 'النوع' : 'Type'}</th>
+                      <th className="px-4 py-3">{isRtl ? 'تاريخ النشر' : 'Published At'}</th>
+                      <th className="px-4 py-3">{isRtl ? 'المشاهدات' : 'Views'}</th>
+                      <th className="px-4 py-3 text-right">{isRtl ? 'إجراءات' : 'Actions'}</th>
+                   </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-900">
+                   {myProjects.map(proj => (
+                      <tr key={proj.id} className="hover:bg-neutral-900/30 transition">
+                         <td className="px-4 py-4 font-semibold text-white">{proj.title}</td>
+                         <td className="px-4 py-4"><span className="px-2 py-1 bg-indigo-950/40 text-indigo-400 text-xs rounded border border-indigo-900/50 capitalize">{proj.type}</span></td>
+                         <td className="px-4 py-4 text-neutral-500">{new Date(proj.createdAt || proj.updatedAt).toLocaleDateString()}</td>
+                         <td className="px-4 py-4 tabular-nums">{proj.views || 0}</td>
+                         <td className="px-4 py-4 flex gap-2 justify-end">
+                            <button 
+                               onClick={() => openProject(proj.id)}
+                               className="p-1.5 bg-neutral-900 hover:bg-neutral-800 text-cyan-400 border border-neutral-800 rounded-md transition"
+                               title="View deployment"
+                            >
+                               <ExternalLink className="w-4 h-4" />
+                            </button>
+                            <button 
+                               onClick={() => handleDeleteProject(proj.id)}
+                               className="p-1.5 bg-neutral-900 hover:bg-red-900/50 text-red-500 border border-neutral-800 rounded-md transition"
+                               title="Delete project"
+                            >
+                               <Trash2 className="w-4 h-4" />
+                            </button>
+                         </td>
+                      </tr>
+                   ))}
+                </tbody>
+             </table>
+           </div>
+        ) : (
+           <div className="text-center p-8 text-neutral-500 font-mono text-xs border border-dashed border-neutral-800 rounded-xl bg-neutral-950/30">
+               {isRtl ? 'لا يوجد لديك مشاريع منشورة في السحابة حتى الآن.' : 'No published projects in the cloud yet.'}
+           </div>
+        )}
+      </div>
+
     </div>
   );
 }

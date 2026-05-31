@@ -12,7 +12,8 @@ import {
   EyeOff,
   Layers,
   Zap,
-  Info
+  Info,
+  Globe
 } from 'lucide-react';
 import { Generation } from '../types';
 import SidebarAd from './ads/SidebarAd';
@@ -202,6 +203,44 @@ export default function AIImageView({
     link.download = `omninexa_forge_${Date.now()}.png`;
     link.target = "_blank";
     link.click();
+  };
+
+  const handlePublish = async () => {
+    if (!imageUrl) return;
+    try {
+      const { auth } = await import('../firebase');
+      const user = auth.currentUser;
+      const idToken = user ? await user.getIdToken() : '';
+      
+      const res = await fetch('/api/publish', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(idToken ? { 'Authorization': `Bearer ${idToken}` } : {})
+        },
+        body: JSON.stringify({
+          title: prompt.slice(0, 30) + '...',
+          description: "AI Generated Image",
+          creatorId: user?.uid || 'user',
+          creatorName: user?.displayName || 'OmniNexa Pro Creator',
+          type: 'image',
+          code: imageUrl,
+          category: 'image'
+        })
+      });
+      
+      let data;
+      try { data = await res.json(); } catch(e) { throw new Error("Invalid publish response"); }
+      
+      if (data.success) {
+        alert("Success! Published to OmniNexa Marketplace.");
+        window.open(`${window.location.origin}${data.url}`, '_blank');
+      } else {
+        alert(data.error || "Publish failed");
+      }
+    } catch(e: any) {
+      alert("Failed to publish: " + (e.message || ""));
+    }
   };
 
   const copyUrl = () => {
@@ -474,6 +513,13 @@ export default function AIImageView({
                 >
                   {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-indigo-400" />}
                   <span>{copied ? (isRtl ? 'تم نسخ الرابط!' : 'Copied!') : (isRtl ? 'نسخ الرابط' : 'Copy URL')}</span>
+                </button>
+                <button 
+                  onClick={handlePublish}
+                  className="px-3.5 py-2 text-[10.5px] font-bold bg-neutral-900 border border-neutral-700 hover:bg-neutral-800 text-neutral-300 rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Globe className="w-3.5 h-3.5 text-neutral-400" />
+                  <span>{isRtl ? 'نشر' : 'Publish'}</span>
                 </button>
                 <button 
                   onClick={handleDownload}
