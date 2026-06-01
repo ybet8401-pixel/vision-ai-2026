@@ -203,7 +203,7 @@ export default function LandingPage({
         <p className="font-mono tracking-wider">
           {isRtl ? 'شغف، مستقبل، وتمكين كامل بموجب محركات الذكاء الاصطناعي مجاناً.' : 'SECURE L3 PROTOCOL. ALL COGNITIVE PIPELINES ACTIVE.'}
         </p>
-        <p className="mt-1">© 2026 OmniNexa AI Inc. Generated via Google AI Studio.</p>
+        <p className="mt-1">© 2026 OmniNexa AI Inc. All rights reserved.</p>
       </footer>
     </div>
   );

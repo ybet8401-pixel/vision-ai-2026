@@ -323,8 +323,9 @@ async function generateTextResilient(
   };
 }
 
+export const app = express();
 async function startServer() {
-  const app = express();
+
   
   // --- CORE SECURITY ---
   const helmet = require('helmet');
@@ -1017,7 +1018,7 @@ Do not output any introductory or conversational text, only return the final opt
                 const repRes = await fetchWithRetry("https://router.huggingface.co/hf-inference/models/stabilityai/stable-video-diffusion-img2vid-xt", {
                   method: "POST",
                   headers: { "Authorization": `Bearer ${hfToken}`, "Content-Type": "application/json" },
-                  body: JSON.stringify({ inputs: base64Image }) 
+                  body: JSON.stringify({ image: image }) 
                 });
                 if (repRes.ok) {
                    const buffer = Buffer.from(await repRes.arrayBuffer());
@@ -1522,9 +1523,13 @@ Do not output any introductory or conversational text, only return the final opt
     return res.status(err.status || 500).json({ error: err.message || 'Internal Server Error' });
   });
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`OmniNexa Quantum AI Server executing locally on port ${PORT}`);
-  });
+  if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`OmniNexa Quantum AI Server executing locally on port ${PORT}`);
+    });
+  }
 }
 
 startServer();
+
+export default app;

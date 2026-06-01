@@ -486,6 +486,11 @@ export default function AIImageView({
                 referrerPolicy="no-referrer"
                 loading="lazy"
                 onLoad={() => setIsImageLoaded(true)}
+                onError={(e) => {
+                  console.error("Image load failed");
+                  setIsImageLoaded(true);
+                  if (e.target) (e.target as HTMLImageElement).src = 'https://placehold.co/1024x1024/1a1a1a/ffffff.png?text=Image+Load+Failed';
+                }}
               />
               {!isPremium && isImageLoaded && (
                 <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg border border-neutral-800 flex items-center gap-2 pointer-events-none">
