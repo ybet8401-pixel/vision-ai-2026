@@ -77,7 +77,7 @@ export default function AdBanner({
       <ins
         className="adsbygoogle animate-pulse"
         style={{ display: 'block', width: '100%', minHeight: '90px' }}
-        data-ad-client="ca-pub-3282448341991495"
+        data-ad-client={import.meta.env.VITE_ADSENSE_PUBLISHER_ID || "ca-pub-3282448341991495"}
         data-ad-slot={adSlot}
         data-ad-format={adFormat}
         data-full-width-responsive={fullWidthResponsive ? "true" : "false"}

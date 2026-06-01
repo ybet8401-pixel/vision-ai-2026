@@ -42,7 +42,7 @@ export default function LandingPage({
   const tools = [
     { 
       title: isRtl ? 'المستكشف الإدراكي' : 'Cognitive AI Explorer',
-      desc: isRtl ? 'محادثات بالغة الذكاء فورية تدعم الترجمة والتحقق المنطقي متصلة بـ Gemini.' : 'Unceasing logic reasoning model for smart, high-fidelity chats.',
+      desc: isRtl ? 'محادثات بالغة الذكاء فورية تدعم الترجمة والتحقق المنطقي متصلة بـ Groq.' : 'Unceasing logic reasoning model for smart, high-fidelity chats.',
       icon: MessageSquare,
       color: 'from-blue-500 to-cyan-400'
     },

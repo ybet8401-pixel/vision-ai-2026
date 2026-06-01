@@ -235,16 +235,12 @@ export default function DashboardView({
               <span className="text-emerald-400">CONNECT STABLE (FREE HOVER)</span>
             </div>
             <div className="flex justify-between text-neutral-400">
-              <span>Stable-Diffusion-XL Pipeline:</span>
-              <span className="text-emerald-400">ACTIVE ON POLLINATIONS</span>
+              <span>Vision AI Pipeline:</span>
+              <span className="text-emerald-400">HF/DEEPINFRA ACTIVE</span>
             </div>
             <div className="flex justify-between text-neutral-400">
-              <span>Ollama Cluster Sync:</span>
-              <span className="text-neutral-500">STANDBY ON HOSTPORT 11434</span>
-            </div>
-            <div className="flex justify-between text-neutral-400">
-              <span>Gemini Pro Context Engine:</span>
-              <span className="text-emerald-400">LIVE COGNITIVE SYNCED</span>
+              <span>Text Generative Engine:</span>
+              <span className="text-emerald-400">GROQ/OPENROUTER CONNECTED</span>
             </div>
           </div>
         </div>

@@ -5,7 +5,22 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(), 
+      tailwindcss(),
+      {
+        name: 'html-transform',
+        transformIndexHtml(html) {
+          return html.replace(
+            /ca-pub-3282448341991495/g, 
+            process.env.ADSENSE_PUBLISHER_ID || "ca-pub-3282448341991495"
+          );
+        }
+      }
+    ],
+    define: {
+      'import.meta.env.VITE_ADSENSE_PUBLISHER_ID': JSON.stringify(process.env.ADSENSE_PUBLISHER_ID || "ca-pub-3282448341991495")
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

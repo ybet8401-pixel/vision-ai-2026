@@ -40,7 +40,7 @@ export default function AIChatView({
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState('Gemini-3.5-Flash (Active)');
+  const [selectedModel, setSelectedModel] = useState('Groq Llama-3.3-70B (Active)');
   const [temperature, setTemperature] = useState(0.7);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
 
@@ -48,13 +48,13 @@ export default function AIChatView({
 
   const modelsList = isRtl
     ? [
-        { name: 'Gemini-3.5-Flash (Active)', desc: 'محرك جوجل النيوروني الحاسم والبحث الفوري', delay: 400 },
+        { name: 'Groq Llama-3.3-70B (Active)', desc: 'محرك التحليل النيوروني الحاسم والبحث الفوري', delay: 400 },
         { name: 'DeepSeek-V3 (Free)', desc: 'خبير التحليل والاستنتاج المنطقي المطور', delay: 800 },
         { name: 'Qwen-2.5-Coder (Free)', desc: 'منسق الأكواد وتصميم الهياكل البرمجية', delay: 700 },
         { name: 'Llama-3.1-70B (Free)', desc: 'النموذج اللغوي الفصيح للمحادثات الطويلة', delay: 900 }
       ]
     : [
-        { name: 'Gemini-3.5-Flash (Active)', desc: 'Next-gen Google Neural Engine & Live Search Grounding', delay: 400 },
+        { name: 'Groq Llama-3.3-70B (Active)', desc: 'Next-gen Neural Engine & Logic Grounding', delay: 400 },
         { name: 'DeepSeek-V3 (Free)', desc: 'Reasoning & Strategic Code Synthesizer', delay: 800 },
         { name: 'Qwen-2.5-Coder (Free)', desc: 'Autonomous High-Volume Architect', delay: 700 },
         { name: 'Llama-3.1-70B (Free)', desc: 'Advanced Linguistic Chat Specialist', delay: 900 }

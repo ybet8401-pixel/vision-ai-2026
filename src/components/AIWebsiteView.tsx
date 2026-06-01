@@ -60,7 +60,7 @@ export default function AIWebsiteView({
   // Editor & Terminal states
   const [editableCode, setEditableCode] = useState('');
   const [copied, setCopied] = useState(false);
-  const [modelUsed, setModelUsed] = useState('Gemini-3.5-Web-Builder (Free)');
+  const [modelUsed, setModelUsed] = useState('Groq/OpenRouter Auto-Coder (Premium)');
   
   // APK dialog state
   const [showApkDialog, setShowApkDialog] = useState(false);

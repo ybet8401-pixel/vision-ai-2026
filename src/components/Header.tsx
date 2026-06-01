@@ -106,7 +106,7 @@ export default function Header({
           <Cpu className={`w-3.5 h-3.5 ${settings.apiMode === 'live' ? 'animate-pulse' : ''}`} />
           <span className="hidden sm:inline">
             {settings.apiMode === 'live' 
-              ? (isRtl ? 'الرابط المباشر' : 'API: Live (Gemini)') 
+              ? (isRtl ? 'الرابط المباشر' : 'API: Live (Active)') 
               : (isRtl ? 'طور المحاكاة' : 'API: Safe Simulation')}
           </span>
         </div>

@@ -64,7 +64,7 @@ export default function AIImageView({
       ]
     : [
         "Initiating visual pipeline vectors and model clusters...",
-        "Integrating Gemini Cognitive Core for description synthesis...",
+        "Integrating LLM Cognitive Core for description synthesis...",
         "Applying specialized style matrices and camera options...",
         "Executing latent noise fields and progressive diffusion passes...",
         "Polishing high-fidelity details, contrast, and pixel upscale..."
@@ -174,23 +174,7 @@ export default function AIImageView({
 
     } catch (err) {
       console.error("High-fidelity image generation failed, activating failsafe:", err);
-      // Resilience fallback
-      const selected = ratios.find(r => r.value === aspectRatio) || ratios[0];
-      const { w, h } = selected.size;
-      const fallbackUrl = `https://image.pollinations.ai/p/${encodeURIComponent(prompt)}?width=${w}&height=${h}&seed=${Math.floor(Math.random() * 99999)}&model=${style === 'anime' ? 'flux-anime' : style === 'photorealistic' ? 'flux-realism' : 'flux'}&enhance=true`;
-      
-      setImageUrl(fallbackUrl);
-      setSourceUsed('Pollinations AI (Failsafe XL Core)');
-      
-      addGeneration({
-        type: 'image',
-        title: prompt.slice(0, 25) + '... (Resilient Fallback)',
-        prompt: prompt,
-        output: fallbackUrl,
-        aspectRatio: aspectRatio,
-        resolution: `${w}x${h}`,
-        modelUsed: 'Pollinations AI (Failsafe XL Core)'
-      });
+      setErrorMsg("Image generation failed. Please verify API configurations.");
     } finally {
       setLoading(false);
     }
@@ -295,33 +279,33 @@ export default function AIImageView({
                   : 'bg-neutral-950 border-neutral-850 text-neutral-400 hover:text-white hover:bg-neutral-900'
               }`}
             >
-              <span className="text-xs font-bold font-mono">Imagen 4 Premium</span>
-              <span className="text-[9px] text-neutral-500">{isRtl ? 'جوجل الفائق' : 'Google SOTA Core'}</span>
+              <span className="text-xs font-bold font-mono">Realism Advanced</span>
+              <span className="text-[9px] text-neutral-500">{isRtl ? 'الفائق' : 'SOTA Core'}</span>
             </button>
           </div>
         </div>
 
-        {/* Prompt Input & Gemini Enhancer Block */}
+        {/* Prompt Input & Enhancer Block */}
         <div className="space-y-2.5">
           <div className="flex items-center justify-between">
             <label className="text-[11px] font-bold text-neutral-400">{isRtl ? 'فكرة اللوحة الإبداعية:' : 'Visual Concept Prompt:'}</label>
             
             {/* Toggle Switch design */}
-            <button
+            <button 
               onClick={() => setEnhancePrompt(!enhancePrompt)}
               className={`flex items-center gap-1.5 px-2 py-0.5 rounded bg-neutral-900 border transition hover:bg-neutral-800 cursor-pointer ${
                 enhancePrompt ? 'border-purple-500/40 text-purple-400' : 'border-neutral-800 text-neutral-500'
               }`}
             >
               <Wand2 className={`w-3 h-3 ${enhancePrompt ? 'animate-bounce' : ''}`} />
-              <span className="text-[10px] font-mono font-bold select-none">{isRtl ? 'ترقية جيميناي' : 'Gemini Auto-Enhance'}</span>
+              <span className="text-[10px] font-mono font-bold select-none">{isRtl ? 'ترقية دقيقة' : 'AI Auto-Enhance'}</span>
             </button>
           </div>
           
           <textarea 
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder={isRtl ? 'صف مشهد تفصيلي هنا... (يمكنك الكتابة بالعربية حيث سيتولى جيميناي ترجمتها وصياغتها باحترافية)' : 'Describe your creative image concept... (Gemini can automatically upgrade and embellish it with photographic details)'}
+            placeholder={isRtl ? 'صف مشهد تفصيلي هنا... (يمكنك الكتابة بالعربية حيث سيتولى الذكاء ترجمتها وصياغتها باحترافية)' : 'Describe your creative image concept... (AI can automatically upgrade and embellish it with photographic details)'}
             rows={3}
             className="w-full px-3 py-2.5 bg-neutral-950 text-xs sm:text-sm text-white placeholder-neutral-600 rounded-xl border border-neutral-850 outline-none focus:border-cyan-400/65 focus:ring-1 focus:ring-cyan-400/20 resize-none transition duration-150"
           />

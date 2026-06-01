@@ -13,12 +13,16 @@ dotenv.config();
 // Auto-Initialize Firebase Admin
 try {
   if (!admin.apps.length) {
-    const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
-    const firebaseConfigRaw = require('fs').readFileSync(firebaseConfigPath, 'utf-8');
-    const firebaseConfig = JSON.parse(firebaseConfigRaw);
+    let projectId = "robust-cycle-3s7sz"; // fallback default
+    try {
+      const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
+      const firebaseConfigRaw = require('fs').readFileSync(firebaseConfigPath, 'utf-8');
+      const firebaseConfig = JSON.parse(firebaseConfigRaw);
+      projectId = firebaseConfig.projectId;
+    } catch(e) {}
     
     admin.initializeApp({
-      projectId: firebaseConfig.projectId
+      projectId: projectId
     });
     console.log("Firebase Admin Initialized for Backend Verifications.");
   }
@@ -33,7 +37,10 @@ function getBackendDb() {
     const firebaseConfig = JSON.parse(firebaseConfigRaw);
     return getFirestore(admin.app(), firebaseConfig.firestoreDatabaseId || "(default)");
   } catch(e) {
-    return getFirestore(); // fallback
+    if (admin.apps.length > 0) {
+      return getFirestore(); // fallback
+    }
+    throw new Error("Firebase Admin not initialized properly.");
   }
 }
 
@@ -187,111 +194,11 @@ async function generateTextResilient(
     } catch (err) { console.warn("OpenRouter Reasoning Agent failed:", err); }
   }
 
-  // 3. CLOUDFLARE AI (Fast performance Edge routing)
-  const cloudflareToken = process.env.CLOUDFLARE_API_TOKEN;
-  // Assume generic Account ID for demonstration or if it exists in env
-  const cloudflareAccount = process.env.CLOUDFLARE_ACCOUNT_ID;
-  if (cloudflareToken && cloudflareAccount && !webSearch) {
-    try {
-      console.log("[AI ORCHESTRATOR] Routing to Reasoning Agent: Cloudflare AI (Edge)...");
-      const response = await fetchWithRetry(`https://api.cloudflare.com/client/v4/accounts/${cloudflareAccount}/ai/run/@cf/meta/llama-3-8b-instruct`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${cloudflareToken}`
-        },
-        body: JSON.stringify({
-          messages: formattedMessages
-        })
-      });
-      if (response.ok) {
-        const data = await response.json();
-        const text = data.result?.response;
-        if (text) return { response: text, provider: "Cloudflare AI (Llama-3 Edge)" };
-      }
-    } catch (err) { console.warn("Cloudflare Reasoning Agent failed:", err); }
-  }
 
-  // 4. DEEPINFRA
-  const deepinfraKey = process.env.DEEPINFRA_API_KEY;
-  if (deepinfraKey && !webSearch) {
-    try {
-      console.log("[AI ORCHESTRATOR] Routing to Reasoning Agent: DeepInfra...");
-      const response = await fetchWithRetry("https://api.deepinfra.com/v1/openai/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${deepinfraKey}`
-        },
-        body: JSON.stringify({
-          model: "meta-llama/Meta-Llama-3-8B-Instruct",
-          messages: formattedMessages
-        })
-      });
-      if (response.ok) {
-        const data = await response.json();
-        const text = data.choices?.[0]?.message?.content;
-        if (text) return { response: text, provider: "DeepInfra (Llama-3)" };
-      }
-    } catch (err) { console.warn("DeepInfra Reasoning Agent failed:", err); }
-  }
-
-  // 4. POLLINATIONS AI (Ultimate fallback & Search capability)
-  try {
-    console.log("[AI ORCHESTRATOR] Routing to Pollinations AI (Fallback / Web Search)...");
-    
-    const polMessages = [
-      { role: "system", content: systemInstruction },
-      ...messages.map(m => ({
-        role: m.role === "assistant" ? "assistant" : "user",
-        content: m.content
-      }))
-    ];
-
-    const response = await fetchWithRetry("https://text.pollinations.ai/", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        messages: polMessages,
-        jsonMode: false,
-        model: webSearch ? "searchgpt" : "openai" // use searchgpt if webSearch is requested!
-      })
-    });
-
-    if (response.ok) {
-      let text = await response.text();
-      try {
-        const parsed = JSON.parse(text);
-        if (parsed && typeof parsed.content === "string") {
-          text = parsed.content;
-        }
-      } catch (e) {
-        // Not JSON, continue as text
-      }
-      // Clean up Pollinations Ad text
-      if (text.includes("Support Pollinations.AI")) {
-        text = text.split("---").filter(p => !p.includes("Support Pollinations.AI")).join("---").trim();
-        if (text.endsWith("---")) {
-           text = text.slice(0, -3).trim();
-        }
-      }
-      return { 
-        response: text, 
-        provider: webSearch ? "Pollinations AI (Search Enabled)" : "Pollinations AI (GPT-4o/Claude)",
-        sources: null
-      };
-    } else {
-      console.warn("Pollinations returned error code:", response.status);
-    }
-  } catch (err) {
-    console.warn("Pollinations failed:", err);
-  }
 
   // Ultimate fallback
   return { 
-    response: "Error: AI providers are currently unavailable. The Auto-Fix system will retry shortly.", 
+    response: "Error: AI providers are currently unavailable. Please verify API keys or check provider status.", 
     provider: "System Base Route",
     sources: null
   };
@@ -807,28 +714,7 @@ Do not output any introductory or conversational text, only return the final opt
       }
     }
 
-    // Resilient Pollinations AI Premium Real-Time Model Routing
-    console.log("Image Pipeline: Activating fallsafe Pollinations AI with advanced mapping...");
-    const seed = Math.floor(Math.random() * 9999999);
-    
-    // Choose appropriate model designations inside Polinations AI URL for amazing pixel fidelities
-    let pollinationsModel = "flux";
-    if (style === "photorealistic") {
-      pollinationsModel = "flux-realism";
-    } else if (style === "anime") {
-      pollinationsModel = "flux-anime";
-    } else if (style === "3d_render") {
-      pollinationsModel = "flux-3d";
-    }
-
-    const encodedPrompt = encodeURIComponent(finalPrompt);
-    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&seed=${seed}&model=${pollinationsModel}&nologo=true&enhance=true`;
-
-    return res.json({
-      imageUrl: pollinationsUrl,
-      source: `Pollinations AI Advanced (FLUX Core)${refinedLog}`,
-      message: "Creative pixel matrix generated successfully with free unlimited AI slot."
-    });
+    return res.status(500).json({ error: "Image generation failed. AI providers might be unavailable." });
   });
 
   // KINETIC MOTION PIPELINE (INTELLIGENT DYNAMIC AI MATCHING & SYNTHESIS)
@@ -889,14 +775,6 @@ Do not output any introductory or conversational text, only return the final opt
         }
         
         job.progress = 30;
-
-        // 2. Pollinations AI - Video Generator (Uses Luma under the hood without API key needed!)
-        try {
-            job.logs.push(`[MOTION AI] Calling Pollinations Cinematic Video (Luma fallback)...`);
-            // Pollinations AI video endpoint experimental support
-            // Wait, standard pollinations text to video: https://image.pollinations.ai/prompt/someprompt
-            // No, Pollinations doesn't do video directly as MP4 uniformly, but we can try HuggingFace First!
-        } catch(e) {}
 
         job.progress = 50;
         
