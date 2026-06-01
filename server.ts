@@ -4,7 +4,6 @@ import fs from "fs/promises";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import AdmZip from "adm-zip";
-import { GoogleGenAI } from "@google/genai";
 import * as admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
 
@@ -131,31 +130,6 @@ async function generateTextResilient(
           } catch(e) {}
         }
       } catch (err) { console.warn("OpenRouter Agent failed:", err); }
-    }
-
-    // 2. TOGETHER AI (Fallback Coding)
-    const togetherKey = process.env.TOGETHER_API_KEY;
-    if (togetherKey) {
-      try {
-        console.log(`[AI ORCHESTRATOR] Routing to ${agentMode.toUpperCase()} Agent: Together AI...`);
-        const response = await fetchWithRetry("https://api.together.xyz/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${togetherKey}`
-          },
-          body: JSON.stringify({
-            model: "Qwen/Qwen2.5-Coder-32B-Instruct", 
-            messages: formattedMessages,
-            temperature: 0.2
-          })
-        });
-        if (response.ok) {
-          const data = await response.json();
-          const text = data.choices?.[0]?.message?.content;
-          if (text) return { response: text, provider: "Together AI (Qwen-Coder)" };
-        }
-      } catch (err) { console.warn("Together AI Agent failed:", err); }
     }
   }
 
@@ -380,11 +354,9 @@ async function startServer() {
       keysConnected: {
         groq: !!process.env.GROQ_API_KEY,
         openrouter: !!process.env.OPENROUTER_API_KEY,
-        together: !!process.env.TOGETHER_API_KEY,
         hf: !!process.env.HF_TOKEN,
         cloudflare: !!process.env.CLOUDFLARE_API_TOKEN,
-        deepinfra: !!process.env.DEEPINFRA_API_KEY,
-        gemini: !!process.env.GEMINI_API_KEY
+        deepinfra: !!process.env.DEEPINFRA_API_KEY
       }
     });
   });
@@ -802,40 +774,6 @@ Do not output any introductory or conversational text, only return the final opt
       }
     }
 
-    const togetherKey = process.env.TOGETHER_API_KEY;
-    if (togetherKey) {
-      try {
-        console.log("Image Pipeline: Requesting Together AI Flux generator...");
-        const resTogether = await fetchWithRetry("https://api.together.xyz/v1/images/generations", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${togetherKey}`
-          },
-          body: JSON.stringify({
-            model: "black-forest-labs/FLUX.1-schnell-Free", // using prompt structure for flux-schnell (can also use standard black-forest-labs/FLUX.1-schnell)
-            prompt: finalPrompt,
-            steps: 4,
-            n: 1,
-            response_format: "b64_json"
-          })
-        });
-        if (resTogether.ok) {
-          const data = await resTogether.json();
-          const base64 = data.data?.[0]?.b64_json;
-          if (base64) {
-            return res.json({
-              imageUrl: `data:image/png;base64,${base64}`,
-              source: `Together AI (FLUX.1-schnell)${refinedLog}`,
-              message: "Premium image generated successfully."
-            });
-          }
-        }
-      } catch (err) {
-        console.warn("Together AI generation bypassed:", err);
-      }
-    }
-
     const deepInfraKey = process.env.DEEPINFRA_API_KEY;
     if (deepInfraKey) {
       try {
@@ -930,38 +868,23 @@ Do not output any introductory or conversational text, only return the final opt
       try {
         job.logs.push(`[AI ORCHESTRATOR] Enhancing prompt with Semantic Engine...`);
         // 1. AI PROMPT ENHANCEMENT
-        const geminiKey = process.env.GEMINI_API_KEY;
-        if (geminiKey) {
+        const groqKey = process.env.GROQ_API_KEY;
+        if (groqKey) {
             try {
-              const ai = new GoogleGenAI({ apiKey: geminiKey });
-              const enhanced = await ai.models.generateContent({
-                model: "gemini-2.5-flash",
-                contents: `Enhance this cinematic motion prompt for a video generator. Add camera angles, realistic cinematic lighting, and smooth motion details if missing. Return ONLY the enhanced prompt string without any quotes or explanations. Original: "${prompt}" - Style: ${style}`
-              });
-              if (enhanced.text) {
-                enhancedPrompt = enhanced.text.trim();
-                job.logs.push(`[PROMPT ENHANCED] ${enhancedPrompt.substring(0, 40)}...`);
-              }
-            } catch (err: any) {
-              job.logs.push(`[WARN] Prompt enhancement failed: ${err.message}. Using original.`);
-            }
-        } else {
-            // Also attempt Groq
-            const groqKey = process.env.GROQ_API_KEY;
-            if (groqKey) {
-                try {
-                    const groqRes = await fetchWithRetry("https://api.groq.com/openai/v1/chat/completions", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${groqKey}` },
-                      body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages: [{role: "user", content: `Enhance this cinematic motion prompt for a video generator. Add camera angles, realistic cinematic lighting. Return ONLY the enhanced prompt string. Original: "${prompt}"`}] })
-                    });
-                    if (groqRes.ok) {
-                        const dat = await groqRes.json();
-                        if (dat.choices?.[0]?.message?.content) {
-                            enhancedPrompt = dat.choices[0].message.content.trim();
-                        }
+                const groqRes = await fetchWithRetry("https://api.groq.com/openai/v1/chat/completions", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "Authorization": `Bearer ${groqKey}` },
+                  body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages: [{role: "user", content: `Enhance this cinematic motion prompt for a video generator. Add camera angles, realistic cinematic lighting. Return ONLY the enhanced prompt string. Original: "${prompt}"`}] })
+                });
+                if (groqRes.ok) {
+                    const dat = await groqRes.json();
+                    if (dat.choices?.[0]?.message?.content) {
+                        enhancedPrompt = dat.choices[0].message.content.trim();
+                        job.logs.push(`[PROMPT ENHANCED] ${enhancedPrompt.substring(0, 40)}...`);
                     }
-                } catch(e) {}
+                }
+            } catch (err: any) {
+                job.logs.push(`[WARN] Prompt enhancement failed: ${err.message}. Using original.`);
             }
         }
         
@@ -1018,7 +941,7 @@ Do not output any introductory or conversational text, only return the final opt
                 const repRes = await fetchWithRetry("https://router.huggingface.co/hf-inference/models/stabilityai/stable-video-diffusion-img2vid-xt", {
                   method: "POST",
                   headers: { "Authorization": `Bearer ${hfToken}`, "Content-Type": "application/json" },
-                  body: JSON.stringify({ image: image }) 
+                  body: JSON.stringify({ inputs: base64Image }) 
                 });
                 if (repRes.ok) {
                    const buffer = Buffer.from(await repRes.arrayBuffer());

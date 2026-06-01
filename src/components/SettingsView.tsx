@@ -77,7 +77,7 @@ export default function SettingsView({
             `}
           >
             {settings.apiMode === 'live' 
-              ? (isRtl ? 'نماذج حية نشطة' : 'LIVE GEMINI KEY') 
+              ? (isRtl ? 'نماذج حية نشطة' : 'LIVE API CLUSTER') 
               : (isRtl ? 'محاكاة محلية آمنة' : 'SAFE SIMULATE')}
           </button>
         </div>
@@ -90,7 +90,7 @@ export default function SettingsView({
             <p className="text-neutral-400 leading-relaxed font-sans">
               {isRtl 
                 ? 'يتم تفعيل مفاتيح الجيل الحقيقي بصورة مأمونة عبر لوحة الإعدادات والمخازن المشفرة. لا يعرض خادم البنية أي مفاتيح للمتصفح مطلقاً.' 
-                : "Real Gemini calls are securely proxied. Operator credentials are auto-injected by the system. Never write API keys manually in the codebase."}
+                : "Real API inferences are securely proxied via the orchestration environment logic. Operator credentials are auto-injected by the system. Never write API keys manually in the codebase."}
             </p>
           </div>
         </div>

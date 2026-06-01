@@ -28,7 +28,7 @@ export default function AdBanner({
   
   // Lazy load intersection observer
   useEffect(() => {
-    // Disable AdSense inside iframes (e.g. AI Studio preview) to prevent framebusting/blank pages
+    // Disable AdSense inside iframes to prevent framebusting/blank pages
     if (isPremium || hasFailed || window.self !== window.top) {
        setHasFailed(true);
        return;
